@@ -1,6 +1,13 @@
-from ultralytics import YOLO
+import sys
+from pathlib import Path
+
+# Make the repo root importable when run as `python scripts/train.py`.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import torch
-import os
+from ultralytics import YOLO
+
+from lokma.config import AppConfig
 
 def train_model():
     # Donanım hızlandırma kontrolü
@@ -15,10 +22,11 @@ def train_model():
         print("GPU veya MPS destekli cihaz bulunamadı. Eğitim CPU üzerinde gerçekleştirilecek.")
 
     # Model yükleme
-    model = YOLO("models/pretrained/yolo11n-seg.pt")
+    config = AppConfig()
+    model = YOLO(str(config.pretrained_seg_model))
 
     # Eğitimi başlat
-    model.train(data="data/processed/yolo_dataset/data.yaml", 
+    model.train(data=str(config.yolo_dataset_dir / "data.yaml"),
             epochs=10, # Segmentasyon daha detaylı olduğu için epoch sayısını artırmak iyidir
             imgsz=640,
             device=device,
