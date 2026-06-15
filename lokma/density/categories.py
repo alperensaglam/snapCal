@@ -69,3 +69,27 @@ def density_for(class_name: str) -> float | None:
 def shape_for(class_name: str) -> str | None:
     """Geometric-shape prior for a class, or ``None`` if unknown."""
     return CLASS_SHAPE.get(_norm(class_name))
+
+
+#: Category -> representative plated height (cm). Once the footprint area is
+#: metric (Phase 2 calibration), height dominates volume error — so it is a
+#: per-class prior rather than a single global constant.
+CATEGORY_HEIGHT_CM: dict[str, float] = {
+    "pastry": 3.5,
+    "syrup_pastry": 4.0,
+    "meat": 3.0,
+    "salad": 4.0,
+    "fried_dough": 4.0,
+    "rice_bowl": 5.0,
+    "wrap": 5.0,
+}
+
+DEFAULT_HEIGHT_CM: float = 2.5
+
+
+def height_for(class_name: str) -> float:
+    """Category-average plated height (cm); falls back to a global default."""
+    category = CLASS_CATEGORY.get(_norm(class_name))
+    if category is not None and category in CATEGORY_HEIGHT_CM:
+        return CATEGORY_HEIGHT_CM[category]
+    return DEFAULT_HEIGHT_CM

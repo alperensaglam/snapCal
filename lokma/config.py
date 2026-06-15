@@ -59,8 +59,8 @@ class AppConfig:
     #: Fallback reference area when a class has no stored ``ref_area``.
     default_ref_area: float = 40_000.0
     camera_index: int = 0
-    #: Active mass-estimation strategy: ``"pixel_ratio"`` (default) or ``"volumetric"``.
-    strategy: str = "pixel_ratio"
+    #: Active mass-estimation strategy: ``"auto"`` (default), ``"pixel_ratio"``, or ``"volumetric"``.
+    strategy: str = "auto"
 
     # --- Calibration defaults (Phase 2 tunable) -----------------------------
     # These feed the *correct* pinhole formula via CameraIntrinsics.from_mm and
@@ -76,6 +76,24 @@ class AppConfig:
     # --- Knowledge-base build parameters ------------------------------------
     semantic_match_threshold: float = 0.65
     sentence_model_name: str = "all-MiniLM-L6-v2"
+
+    # --- Phase 2: frictionless calibration ----------------------------------
+    #: Assumed dinner-plate diameter (natural anchor), cm. Turkish main course ≈ 26-28.
+    default_plate_diameter_cm: float = 27.0
+    #: Volumetric activates only when calibration confidence >= this (safe activation).
+    calibration_confidence_threshold: float = 0.5
+    #: PlateEllipseDetector tuning.
+    plate_canny_low: int = 50
+    plate_canny_high: int = 150
+    plate_min_frame_fraction: float = 0.30     # plate major axis / max(frame side)
+    plate_max_frame_fraction: float = 1.05
+    plate_min_axis_ratio: float = 0.55         # minor/major; below ⇒ too tilted to trust
+    #: If no plate is found, optionally assume one spanning the frame (very low confidence).
+    assume_default_plate: bool = True
+    assumed_plate_frame_fraction: float = 0.70
+    #: Optional COCO utensil anchor (loads models/pretrained/yolo11n.pt on demand).
+    enable_utensil_anchor: bool = False
+    coco_model_path: Path = PROJECT_ROOT / "models" / "pretrained" / "yolo11n.pt"
 
     @property
     def working_resolution(self) -> tuple[int, int]:

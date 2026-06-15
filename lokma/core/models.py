@@ -8,6 +8,7 @@ were the source of brittle unpacking bugs.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Mapping
 
 import numpy as np
@@ -121,7 +122,9 @@ class Detection:
     confidence: float
     mask: np.ndarray
     bbox: tuple[float, float, float, float]
-    mask_area_px: float
+    mask_area_px: float                       # at working (640²) grid — pixel_ratio parity
+    mask_area_px_frame: float = 0.0           # at native frame grid — volumetric/scale
+    frame_size: tuple[int, int] = (0, 0)      # (W, H) of the source frame
 
 
 @dataclass(frozen=True)
@@ -132,6 +135,8 @@ class MassEstimate:
     method: str
     density_used: float | None = None
     volume_cm3: float | None = None
+    calibration_source: str | None = None
+    calibration_confidence: float | None = None
 
 
 @dataclass(frozen=True)
@@ -187,3 +192,101 @@ def _as_float(value: Any) -> float:
 
 def _as_optional_float(value: Any) -> float | None:
     return float(value) if value is not None else None
+
+
+# --- Phase 2: frictionless calibration --------------------------------------
+
+
+class CalibrationSource(str, Enum):
+    """Which level of the calibration hierarchy produced a scale."""
+
+    DEPTH_INTRINSICS = "depth_intrinsics"
+    INTRINSICS_PLANE = "intrinsics_plane"
+    NATURAL_ANCHOR = "natural_anchor"
+    STATIC_DEFAULT = "static_default"
+
+
+@dataclass(frozen=True)
+class AnchorDetection:
+    """A natural anchor (plate/utensil) of known real size found in the frame."""
+
+    kind: str
+    pixel_size: float                         # major axis (plate) / length (utensil), frame px
+    assumed_real_mm: float
+    confidence: float
+    center: tuple[float, float] | None = None
+    axes: tuple[float, float] | None = None   # (major, minor) for a plate ellipse
+    angle_deg: float | None = None
+    tilt_deg: float | None = None
+
+
+@dataclass(frozen=True)
+class ScaleEstimate:
+    """The per-frame calibration result: how many millimetres a pixel spans."""
+
+    mm_per_px: float
+    source: CalibrationSource
+    confidence: float
+    tilt_deg: float | None = None
+    homography: np.ndarray | None = None
+    working_size: tuple[int, int] | None = None
+
+    @property
+    def mm2_per_px2(self) -> float:
+        return self.mm_per_px ** 2
+
+    def area_px_to_cm2(self, area_px: float) -> float:
+        """Scalar path (Phase 2, top-down): pixel area -> cm²."""
+        return area_px * self.mm2_per_px2 / 100.0
+
+    def contour_area_to_cm2(self, contour: np.ndarray) -> float:
+        """Geometry-aware path (Phase 4): warp a contour to metric space, then area.
+
+        Falls back to scalar scaling when no homography is present.
+        """
+        import cv2  # lazy import keeps this module usable without OpenCV
+
+        pts = np.asarray(contour, dtype=np.float32).reshape(-1, 1, 2)
+        if self.homography is not None:
+            warped = cv2.perspectiveTransform(pts, np.asarray(self.homography, dtype=np.float32))
+            return abs(cv2.contourArea(warped)) / 100.0
+        return self.area_px_to_cm2(abs(cv2.contourArea(pts)))
+
+
+@dataclass(frozen=True)
+class FrameContext:
+    """Per-frame capture bundle.
+
+    Optional device fields are populated by ARKit/AVFoundation on iOS (Phase 4);
+    desktop uses :meth:`simulated_topdown`. The calibration engine consumes
+    whatever is available, so the same pipeline runs with or without a device.
+    """
+
+    frame: np.ndarray
+    intrinsics: CameraIntrinsics | None = None
+    tilt_deg: float | None = None
+    gravity: tuple[float, float, float] | None = None
+    depth_map: np.ndarray | None = None
+    depth_mm: float | None = None
+
+    @classmethod
+    def simulated_topdown(cls, frame: np.ndarray, config: Any = None) -> "FrameContext":
+        """Desktop/webcam: plain RGB, assume near top-down, no device intrinsics/depth."""
+        return cls(frame=frame, intrinsics=None, tilt_deg=0.0)
+
+    @classmethod
+    def from_device(
+        cls,
+        frame: np.ndarray,
+        *,
+        intrinsics: CameraIntrinsics | None = None,
+        tilt_deg: float | None = None,
+        depth_map: np.ndarray | None = None,
+        depth_mm: float | None = None,
+        gravity: tuple[float, float, float] | None = None,
+    ) -> "FrameContext":
+        """Phase 4 hook: ARKit ARFrame.camera.intrinsics / sceneDepth / attitude."""
+        return cls(
+            frame=frame, intrinsics=intrinsics, tilt_deg=tilt_deg,
+            depth_map=depth_map, depth_mm=depth_mm, gravity=gravity,
+        )

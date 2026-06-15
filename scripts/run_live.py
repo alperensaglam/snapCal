@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """LOKMA live webcam adapter.
 
-The thin UI shell around :class:`InferencePipeline`: it owns frame capture, the
-OpenCV window, and rendering — nothing else. All estimation logic lives in the
-pipeline, so this file is the desktop analogue of the future iOS adapter.
+The thin UI shell around :class:`InferencePipeline`: frame capture, the OpenCV
+window, rendering, and a small calibration HUD. All estimation lives in the
+pipeline, so this is the desktop analogue of the future iOS/ARKit adapter.
 
 Run from the repository root::
 
@@ -25,10 +25,20 @@ from lokma.config import AppConfig  # noqa: E402
 from lokma.pipeline.inference_pipeline import InferencePipeline  # noqa: E402
 
 MASK_COLOR = (0, 255, 0)
+HUD_COLOR = (0, 220, 255)
+
+
+def _calibration_hud(results) -> str:
+    """Summarize the per-frame calibration from the first estimated detection."""
+    for annotated in results:
+        if annotated.mass is not None and annotated.mass.calibration_source:
+            conf = annotated.mass.calibration_confidence or 0.0
+            return f"calib: {annotated.mass.calibration_source} ({conf:.2f})"
+    return "calib: --"
 
 
 def _render(frame, results, mask_threshold: float):
-    """Overlay masks + labels onto the frame (in place) and return it."""
+    """Overlay masks + labels + calibration HUD onto the frame (in place)."""
     overlay = frame.copy()
     height, width = frame.shape[:2]
     for annotated in results:
@@ -41,6 +51,8 @@ def _render(frame, results, mask_threshold: float):
             cv2.FONT_HERSHEY_DUPLEX, 0.5, MASK_COLOR, 2,
         )
     cv2.addWeighted(overlay, 0.3, frame, 0.7, 0, frame)
+    cv2.putText(frame, _calibration_hud(results), (10, 24),
+                cv2.FONT_HERSHEY_DUPLEX, 0.6, HUD_COLOR, 2)
     return frame
 
 
