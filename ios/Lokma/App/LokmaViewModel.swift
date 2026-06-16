@@ -53,10 +53,14 @@ extension LokmaViewModel: ARCaptureDelegate {
         Task { @MainActor in
             guard !busy, let model, let engine else { return }
             busy = true
-            let frameSize = context.frameSize ?? (Int(CVPixelBufferGetWidth(pixelBuffer)), Int(CVPixelBufferGetHeight(pixelBuffer)))
             inferenceQueue.async { [weak self] in
-                let raws = (try? model.predict(pixelBuffer: pixelBuffer, frameSize: frameSize)) ?? []
-                let detections = raws.map { DetectionBuilder.makeDetection(from: $0, frameSize: frameSize) }
+                // predict center-crops to a square and reports the (S, S) frame the
+                // detections live on; DetectionBuilder reuses that for native-grid area.
+                let prediction = (try? model.predict(pixelBuffer: pixelBuffer))
+                    ?? (detections: [RawDetection](), frameSize: (0, 0))
+                let detections = prediction.detections.map {
+                    DetectionBuilder.makeDetection(from: $0, frameSize: prediction.frameSize)
+                }
                 let (results, scale) = engine.process(detections: detections, context: context)
                 Task { @MainActor in
                     self?.labels = results.map { $0.label }

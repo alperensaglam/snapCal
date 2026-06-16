@@ -12,5 +12,7 @@ dependencies:
   - scikit-learn           # Veri setini bölmek (Train/Test split) için
   - pip
   - pip:
-    - ultralytics          # YOLOv11'in kalbi
+    - ultralytics          # YOLOv11'in kalbi (torch'u da kurar)
+    - coremltools           # CoreML export (scripts/export_coreml.py — Phase 4 iOS)
+    - sentence-transformers # Entity resolver Tier1 (LaBSE/MiniLM) — KB build
     - python-dotenv        # API anahtarları ve gizli ayarlar için

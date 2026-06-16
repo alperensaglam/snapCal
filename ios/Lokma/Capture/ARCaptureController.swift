@@ -65,10 +65,14 @@ public final class ARCaptureController: NSObject, ARSessionDelegate {
         let imageW = Int(imageRes.width.rounded())
         let imageH = Int(imageRes.height.rounded())
 
-        // Intrinsics: fx is in pixels of the captured image; rescale to the
-        // 640 working grid the masks (and ref_area) are measured on.
+        // Intrinsics: fx is in pixels of the captured image; rescale to the 640
+        // working grid the masks (and ref_area) are measured on. FoodSegModel
+        // center-crops the buffer to a square (side = min(w,h)) before the 640
+        // resize, so the focal must scale by the *crop* side — not the full width —
+        // for the volumetric metric path to stay consistent with what the model saw.
+        let cropSide = min(imageW, imageH)
         let fxCaptured = Double(camera.intrinsics.columns.0.x)
-        let scaleToWorking = Double(workingWidth) / max(1.0, Double(imageW))
+        let scaleToWorking = Double(workingWidth) / max(1.0, Double(cropSide))
         let focalPxWorking = fxCaptured * scaleToWorking
         let intrinsics = CameraIntrinsics(
             focalPx: focalPxWorking,
@@ -83,7 +87,7 @@ public final class ARCaptureController: NSObject, ARSessionDelegate {
             intrinsics: intrinsics,
             tiltDeg: tiltDeg,
             depthMm: depthMm,
-            frameSize: (imageW, imageH)
+            frameSize: (cropSide, cropSide)   // the centered square the model + estimators see
         )
     }
 

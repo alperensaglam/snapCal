@@ -90,14 +90,27 @@ export.
    uses an area-preserving coverage fraction rather than a second `cv2.resize`, so
    small differences here are expected and bounded.
 
+## Preprocessing convention (implemented)
+
+The CoreML input is a fixed `image 640×640`, so `FoodSegModel` **center-crops** the
+ARKit buffer to a square (`S = min(w, h)`) and scales it to 640² via a reused,
+GPU-backed `CIContext` + `CVPixelBufferPool` (aspect-fill, no per-frame allocation).
+Because the model sees that square, the **effective frame is `(S, S)`**: `predict`
+returns it, the decoder maps boxes back by a uniform `S/640`, and `DetectionBuilder`
+counts native-grid area against `S²`. `ARCaptureController` scales the working-grid
+focal length by the same `S` (not the full width) and sets `FrameContext.frameSize =
+(S, S)` — capture and inference share one square frame, keeping the volumetric metric
+path consistent. Validate on-device under Steps 4–5 (and check buffer
+orientation/mirroring, a CoreImage round-trip detail not yet tuned).
+
 ## Known seams (fill on first real export)
 
-- **`FoodSegModel.resized()`** is a pass-through. If the model's input layer does
-  not auto-resize the camera buffer to `imgsz`, replace it with a real CIContext
-  square render (or a `VNImageRequestHandler` crop-and-scale).
-- **Decode is export-shape-dependent.** Validate shapes per step 1 before trusting
-  masses; the decoder assumes Float32 multiarrays (export `--no-half` while
-  validating).
+- **Decode is export-shape-dependent.** Validated for the v1 export in Step 1
+  (`[1,46,8400]` dets + `[1,32,160,160]` proto, both FP32, names auto-resolved by
+  rank). Re-confirm if the export changes.
+- **Decoder requires FP32.** It returns `[]` for non-`float32` outputs, so a future
+  `--half` (fp16) export silently yields zero detections until the decoder is
+  updated. Keep exporting `--no-half` until then.
 
 ## Swapping v1 → v2 on device
 
