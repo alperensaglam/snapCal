@@ -108,6 +108,16 @@ class AppConfig:
     #: Active visual model version (keys class_map for class_id -> food).
     model_version: str = "foodyolo_v1"
 
+    # --- Phase 3b: v2 retrain (Altın Liste) ---------------------------------
+    #: User-provided raw images, one folder per taxonomy slug.
+    raw_v2_dir: Path = PROJECT_ROOT / "data" / "raw" / "lokma_v2"
+    #: Auto-labeled YOLO-seg dataset output for the v2 retrain.
+    yolo_v2_dataset_dir: Path = PROJECT_ROOT / "data" / "processed" / "yolo_v2"
+    #: Where training writes the v2 weights (set LOKMA_MODEL_PATH here to activate).
+    v2_model_path: Path = PROJECT_ROOT / "runs" / "train" / "foodyolo_v2" / "weights" / "best.pt"
+    train_epochs: int = 80
+    train_run_name: str = "foodyolo_v2"
+
     @property
     def working_resolution(self) -> tuple[int, int]:
         """Square working resolution at which masks are measured."""

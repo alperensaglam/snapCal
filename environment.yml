@@ -1,4 +1,4 @@
-name: snapCal_env          # Ortamın adı
+name: lokma_env          # Ortamın adı
 channels:
   - conda-forge            # Apple Silicon için en hızlı kütüphaneler buradan gelir
   - defaults

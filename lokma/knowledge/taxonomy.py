@@ -145,3 +145,26 @@ def by_slug() -> dict[str, TaxonomyFood]:
 def legacy_foods() -> list[TaxonomyFood]:
     """Foods detectable by the current Food-101 model, ordered by class id."""
     return sorted((f for f in FOODS if f.legacy_class_id is not None), key=lambda f: f.legacy_class_id)
+
+
+#: The model version trained on the Altın Liste (Phase 3b).
+V2_MODEL_VERSION = "foodyolo_v2"
+
+#: The **Altın Liste** — the v2 training class set. Tuple order == ``class_id``,
+#: so this single constant defines the data.yaml class order, the trained model's
+#: ``names``, and the v2 ``class_map`` ordering.
+GOLDEN_LIST: tuple[str, ...] = (
+    # Turkish cuisine (8)
+    "baklava", "lahmacun", "doner", "pide",
+    "kuru_fasulye", "mercimek_corbasi", "pilav", "kofte",
+    # Everyday essentials (4)
+    "egg", "chicken_breast", "cooked_rice", "banana",
+    # Western keepers (2)
+    "apple_pie", "breakfast_burrito",
+)
+
+
+def golden_foods() -> list[TaxonomyFood]:
+    """Altın Liste foods in class-id order (the v2 training set)."""
+    index = by_slug()
+    return [index[slug] for slug in GOLDEN_LIST]

@@ -37,7 +37,7 @@ class KnowledgeBaseBuilder:
             raise KnowledgeBaseBuildError("Empty taxonomy")
         logger.info("Building knowledge base: %d foods -> %s", len(foods), self.config.db_path)
 
-        ref_areas = self._legacy_ref_areas()
+        ref_areas = self._ref_areas(self.config.val_labels_dir)
         resolver = EntityResolver(self.config)
         if self.config.enable_embedding_resolver:
             try:
@@ -52,6 +52,7 @@ class KnowledgeBaseBuilder:
         fact_rows: list[dict] = []
         class_rows: list[dict] = []
         seen_aliases: set[tuple[int, str, str]] = set()
+        slug_to_id: dict[str, int] = {}
 
         def add_alias(food_id: int, lang: str, text: str, kind: str) -> None:
             text = (text or "").strip()
@@ -70,6 +71,7 @@ class KnowledgeBaseBuilder:
                 "geometric_shape": food.geometric_shape, "height_cm": food.height_cm,
                 "default_portion_g": food.default_portion_g,
             })
+            slug_to_id[food.slug] = food_id
             add_alias(food_id, "en", food.name_en, "primary")
             add_alias(food_id, "tr", food.name_tr, "primary")
             for a in food.aliases_en:
@@ -90,6 +92,17 @@ class KnowledgeBaseBuilder:
                     "ref_area": ref_areas.get(food.legacy_class_id, self.config.default_ref_area),
                 })
 
+        # v2 (Altın Liste) class map — class order == taxonomy.GOLDEN_LIST.
+        v2_ref = self._ref_areas(self.config.yolo_v2_dataset_dir / "labels" / "val")
+        for class_id, slug in enumerate(taxonomy.GOLDEN_LIST):
+            food_id = slug_to_id.get(slug)
+            if food_id is not None:
+                class_rows.append({
+                    "model_version": taxonomy.V2_MODEL_VERSION, "class_id": class_id,
+                    "food_id": food_id,
+                    "ref_area": v2_ref.get(class_id, self.config.default_ref_area),
+                })
+
         db = DatabaseManager(self.config.db_path, read_only=False)
         try:
             db.create_schema(drop_existing=True)
@@ -98,7 +111,7 @@ class KnowledgeBaseBuilder:
             db.insert_many("nutrition_facts", NUTRITION_FACTS_COLUMNS, fact_rows)
             db.insert_many("class_map", CLASS_MAP_COLUMNS, class_rows)
             db.set_meta("schema_version", SCHEMA_VERSION)
-            db.set_meta("active_model_version", taxonomy.LEGACY_MODEL_VERSION)
+            db.set_meta("active_model_version", self.config.model_version)
             db.set_meta("embedding_model", self.config.embedding_model)
             db.set_meta("built_at", datetime.now(timezone.utc).isoformat())
             db.commit()
@@ -113,9 +126,8 @@ class KnowledgeBaseBuilder:
 
     # --- helpers ------------------------------------------------------------
 
-    def _legacy_ref_areas(self) -> dict[int, float]:
+    def _ref_areas(self, labels_dir) -> dict[int, float]:
         """Per-class average mask pixel area from val labels (shoelace -> 640 grid)."""
-        labels_dir = self.config.val_labels_dir
         default = self.config.default_ref_area
         if not labels_dir.exists():
             logger.warning("Val labels dir %s missing; default ref areas", labels_dir)

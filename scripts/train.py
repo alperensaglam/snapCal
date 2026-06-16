@@ -26,11 +26,11 @@ def train_model():
     model = YOLO(str(config.pretrained_seg_model))
 
     # Eğitimi başlat
-    model.train(data=str(config.yolo_dataset_dir / "data.yaml"),
-            epochs=10, # Segmentasyon daha detaylı olduğu için epoch sayısını artırmak iyidir
+    model.train(data=str(config.yolo_v2_dataset_dir / "data.yaml"),
+            epochs=config.train_epochs, # Segmentasyon daha detaylı olduğu için epoch sayısını artırmak iyidir
             imgsz=640,
             device=device,
-            name="snapCal_v1_seg",
+            name=config.train_run_name,
             project="runs/train",
             batch=16,
             workers=4,
