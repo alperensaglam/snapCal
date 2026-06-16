@@ -1,0 +1,377 @@
+{
+  "_meta": {
+    "generated_by": "scripts/dump_golden_vectors.py",
+    "purpose": "Swift LokmaCore parity vectors \u2014 assert Swift port == Python reference",
+    "config": {
+      "focal_length_mm": 4.2,
+      "pixel_pitch_mm": 0.0012,
+      "native_resolution": [
+        4032,
+        3024
+      ],
+      "default_distance_mm": 300.0,
+      "default_ref_area": 40000.0,
+      "calibration_confidence_threshold": 0.5,
+      "default_plate_diameter_cm": 27.0,
+      "assumed_plate_frame_fraction": 0.7,
+      "flat_layer_cm": 0.8,
+      "water_density": 1.0,
+      "default_height_cm": 2.5
+    }
+  },
+  "intrinsics_from_mm": [
+    {
+      "focal_mm": 4.2,
+      "pitch_mm": 0.0012,
+      "native_w": 4032,
+      "native_h": 3024,
+      "working_w": 640,
+      "working_h": 640,
+      "expect_focal_px": 555.5555555555555,
+      "expect_cx": 320.0,
+      "expect_cy": 320.0
+    },
+    {
+      "focal_mm": 6.0,
+      "pitch_mm": 0.0008,
+      "native_w": 4032,
+      "native_h": 3024,
+      "working_w": 640,
+      "working_h": 640,
+      "expect_focal_px": 1190.4761904761904,
+      "expect_cx": 320.0,
+      "expect_cy": 320.0
+    },
+    {
+      "focal_mm": 4.2,
+      "pitch_mm": 0.0012,
+      "native_w": 1920,
+      "native_h": 1440,
+      "working_w": 640,
+      "working_h": 640,
+      "expect_focal_px": 1166.6666666666667,
+      "expect_cx": 320.0,
+      "expect_cy": 320.0
+    }
+  ],
+  "area_px_to_cm2": [
+    {
+      "mm_per_px": 0.5,
+      "area_px": 50000.0,
+      "expect_mm2_per_px2": 0.25,
+      "expect_cm2": 125.0
+    },
+    {
+      "mm_per_px": 1.2,
+      "area_px": 12345.0,
+      "expect_mm2_per_px2": 1.44,
+      "expect_cm2": 177.768
+    },
+    {
+      "mm_per_px": 0.83,
+      "area_px": 0.0,
+      "expect_mm2_per_px2": 0.6889,
+      "expect_cm2": 0.0
+    },
+    {
+      "mm_per_px": 2.0,
+      "area_px": 90000.0,
+      "expect_mm2_per_px2": 4.0,
+      "expect_cm2": 3600.0
+    }
+  ],
+  "volume": [
+    {
+      "area_cm2": 100.0,
+      "shape": "prism",
+      "height_cm": 3.0,
+      "expect_volume_cm3": 300.0,
+      "expect_shape": "prism",
+      "expect_effective_height_cm": 3.0
+    },
+    {
+      "area_cm2": 100.0,
+      "shape": "cylinder",
+      "height_cm": 5.0,
+      "expect_volume_cm3": 500.0,
+      "expect_shape": "cylinder",
+      "expect_effective_height_cm": 5.0
+    },
+    {
+      "area_cm2": 100.0,
+      "shape": "paraboloid",
+      "height_cm": 4.0,
+      "expect_volume_cm3": 200.0,
+      "expect_shape": "paraboloid",
+      "expect_effective_height_cm": 4.0
+    },
+    {
+      "area_cm2": 100.0,
+      "shape": "flat",
+      "height_cm": 99.0,
+      "expect_volume_cm3": 80.0,
+      "expect_shape": "flat",
+      "expect_effective_height_cm": 0.8
+    },
+    {
+      "area_cm2": 250.0,
+      "shape": "unknown_shape",
+      "height_cm": 2.5,
+      "expect_volume_cm3": 625.0,
+      "expect_shape": "unknown_shape",
+      "expect_effective_height_cm": 2.5
+    }
+  ],
+  "density_lookup": [
+    {
+      "class_name": "baklava",
+      "expect_density": 1.2
+    },
+    {
+      "class_name": "apple_pie",
+      "expect_density": 0.6
+    },
+    {
+      "class_name": "breakfast_burrito",
+      "expect_density": 0.9
+    },
+    {
+      "class_name": "doner",
+      "expect_density": null
+    },
+    {
+      "class_name": "egg",
+      "expect_density": null
+    },
+    {
+      "class_name": "banana",
+      "expect_density": null
+    },
+    {
+      "class_name": "unknown_food",
+      "expect_density": null
+    }
+  ],
+  "height_lookup": [
+    {
+      "class_name": "baklava",
+      "expect_height_cm": 4.0
+    },
+    {
+      "class_name": "apple_pie",
+      "expect_height_cm": 3.5
+    },
+    {
+      "class_name": "beef_carpaccio",
+      "expect_height_cm": 3.0
+    },
+    {
+      "class_name": "doner",
+      "expect_height_cm": 2.5
+    },
+    {
+      "class_name": "egg",
+      "expect_height_cm": 2.5
+    },
+    {
+      "class_name": "banana",
+      "expect_height_cm": 2.5
+    },
+    {
+      "class_name": "unknown_food",
+      "expect_height_cm": 2.5
+    }
+  ],
+  "density_resolve": [
+    {
+      "class_name": "baklava",
+      "db_density": 1.2,
+      "expect_density": 1.2,
+      "expect_source": "database"
+    },
+    {
+      "class_name": "apple_pie",
+      "db_density": null,
+      "expect_density": 0.6,
+      "expect_source": "category"
+    },
+    {
+      "class_name": "unknown_food",
+      "db_density": null,
+      "expect_density": 1.0,
+      "expect_source": "water"
+    }
+  ],
+  "nutrition": [
+    {
+      "kcal_100": 520.0,
+      "protein_100": 8.0,
+      "fat_100": 30.0,
+      "carbs_100": 55.0,
+      "grams": 180.0,
+      "expect_calories": 936.0,
+      "expect_protein": 14.4,
+      "expect_fat": 54.0,
+      "expect_carbs": 99.0
+    },
+    {
+      "kcal_100": 52.0,
+      "protein_100": 0.3,
+      "fat_100": 0.2,
+      "carbs_100": 14.0,
+      "grams": 120.0,
+      "expect_calories": 62.4,
+      "expect_protein": 0.36,
+      "expect_fat": 0.24,
+      "expect_carbs": 16.8
+    }
+  ],
+  "pixel_ratio": [
+    {
+      "mask_area_px": 60000.0,
+      "ref_area": 50000.0,
+      "portion_g": 150.0,
+      "default_ref_area": 40000.0,
+      "expect_grams": 180.0,
+      "expect_method": "pixel_ratio"
+    },
+    {
+      "mask_area_px": 60000.0,
+      "ref_area": null,
+      "portion_g": 150.0,
+      "default_ref_area": 40000.0,
+      "expect_grams": 225.0,
+      "expect_method": "pixel_ratio"
+    },
+    {
+      "mask_area_px": 60000.0,
+      "ref_area": 0.0,
+      "portion_g": 150.0,
+      "default_ref_area": 40000.0,
+      "expect_grams": 225.0,
+      "expect_method": "pixel_ratio"
+    }
+  ],
+  "volumetric": [
+    {
+      "mm_per_px": 0.5,
+      "mask_area_px_frame": 90000.0,
+      "mask_area_px": 60000.0,
+      "class_name": "baklava",
+      "db_density": 1.2,
+      "geometric_shape": "prism",
+      "expect_grams": 1080.0,
+      "expect_volume_cm3": 900.0,
+      "expect_density_used": 1.2
+    },
+    {
+      "mm_per_px": 1.0,
+      "mask_area_px_frame": 40000.0,
+      "mask_area_px": 30000.0,
+      "class_name": "apple_pie",
+      "db_density": null,
+      "geometric_shape": "prism",
+      "expect_grams": 840.0,
+      "expect_volume_cm3": 1400.0,
+      "expect_density_used": 0.6
+    },
+    {
+      "mm_per_px": 0.83,
+      "mask_area_px_frame": 0.0,
+      "mask_area_px": 50000.0,
+      "class_name": "egg",
+      "db_density": 0.9,
+      "geometric_shape": "paraboloid",
+      "expect_grams": 387.50625,
+      "expect_volume_cm3": 430.5625,
+      "expect_density_used": 0.9
+    }
+  ],
+  "auto_strategy": [
+    {
+      "scale_confidence": 0.9,
+      "threshold": 0.5,
+      "expect_grams": 1080.0,
+      "expect_method": "volumetric:database"
+    },
+    {
+      "scale_confidence": 0.3,
+      "threshold": 0.5,
+      "expect_grams": 180.0,
+      "expect_method": "pixel_ratio:uncalibrated"
+    },
+    {
+      "scale_confidence": null,
+      "threshold": 0.5,
+      "expect_grams": 180.0,
+      "expect_method": "pixel_ratio:uncalibrated"
+    }
+  ],
+  "calibration_levels": [
+    {
+      "level": "depth_intrinsics",
+      "focal_px": 555.5555555555555,
+      "depth_mm": 300.0,
+      "expect_mm_per_px": 0.54,
+      "expect_source": "depth_intrinsics",
+      "expect_confidence": 0.9
+    },
+    {
+      "level": "intrinsics_plane",
+      "focal_px": 555.5555555555555,
+      "depth_mm": 420.0,
+      "default_distance_mm": 300.0,
+      "expect_mm_per_px": 0.756,
+      "expect_source": "intrinsics_plane",
+      "expect_confidence": 0.7
+    },
+    {
+      "level": "intrinsics_plane",
+      "focal_px": 555.5555555555555,
+      "depth_mm": null,
+      "default_distance_mm": 300.0,
+      "expect_mm_per_px": 0.54,
+      "expect_source": "intrinsics_plane",
+      "expect_confidence": 0.7
+    },
+    {
+      "level": "static_default",
+      "focal_px": 555.5555555555555,
+      "default_distance_mm": 300.0,
+      "expect_mm_per_px": 0.54,
+      "expect_source": "static_default",
+      "expect_confidence": 0.2
+    }
+  ],
+  "assumed_plate": [
+    {
+      "frame_w": 640,
+      "frame_h": 480,
+      "plate_diameter_cm": 27.0,
+      "assumed_fraction": 0.7,
+      "expect_mm_per_px": 0.6026785714285714,
+      "expect_confidence": 0.3,
+      "expect_source": "natural_anchor"
+    }
+  ],
+  "resolver_selection": [
+    {
+      "scenario": "depth+intrinsics",
+      "expect_source": "depth_intrinsics",
+      "expect_confidence": 0.9,
+      "expect_mm_per_px": 0.54
+    },
+    {
+      "scenario": "intrinsics+tilt",
+      "expect_source": "intrinsics_plane",
+      "expect_confidence": 0.7,
+      "expect_mm_per_px": 0.54
+    },
+    {
+      "scenario": "bare",
+      "expect_source": "static_default",
+      "expect_confidence": 0.2,
+      "expect_mm_per_px": 0.54
+    }
+  ]
+}

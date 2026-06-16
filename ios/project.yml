@@ -1,0 +1,48 @@
+# XcodeGen spec for the LOKMA iOS app.
+#
+#   brew install xcodegen      # one-time
+#   cd ios && xcodegen generate # writes Lokma.xcodeproj from this file
+#
+# The app depends on the local LokmaCore package (the parity-tested pure-math
+# port) and GRDB (SQLite access to the bundled, read-only knowledge base).
+name: Lokma
+options:
+  bundleIdPrefix: com.lokma
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  LokmaCore:
+    path: LokmaCore
+  GRDB:
+    url: https://github.com/groue/GRDB.swift.git
+    from: "6.0.0"
+
+targets:
+  Lokma:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: Lokma
+    dependencies:
+      - package: LokmaCore
+        product: LokmaCore
+      - package: GRDB
+        product: GRDB
+    info:
+      path: Lokma/Info.plist
+      properties:
+        CFBundleDisplayName: LOKMA
+        UILaunchScreen: {}
+        NSCameraUsageDescription: "LOKMA uses the camera to see your plate and estimate its calories."
+        UIRequiredDeviceCapabilities: [armv7, arkit]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1"          # iPhone
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: false
+        MARKETING_VERSION: "0.4.0"           # Phase 4
+        CURRENT_PROJECT_VERSION: "1"
