@@ -95,6 +95,19 @@ class AppConfig:
     enable_utensil_anchor: bool = False
     coco_model_path: Path = PROJECT_ROOT / "models" / "pretrained" / "yolo11n.pt"
 
+    # --- Phase 3: multilingual knowledge ------------------------------------
+    #: Cross-lingual embedding model for the OFFLINE resolver (runtime never embeds).
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    #: Tier-1 embedding enrichment (match USDA descriptions). Off => curated-only build.
+    enable_embedding_resolver: bool = False
+    #: Tier-2 LLM fallback for uncurated foods (needs ANTHROPIC_API_KEY).
+    enable_llm_resolver: bool = False
+    llm_model: str = "claude-haiku-4-5-20251001"
+    #: Preferred nutrition-source locale ('en' global / 'tr' Turkish).
+    locale: str = "en"
+    #: Active visual model version (keys class_map for class_id -> food).
+    model_version: str = "foodyolo_v1"
+
     @property
     def working_resolution(self) -> tuple[int, int]:
         """Square working resolution at which masks are measured."""

@@ -28,7 +28,7 @@ CLASS_CATEGORY: dict[str, str] = {
     "breakfast_burrito": "wrap",
 }
 
-#: Category -> representative density (g/cm³).
+#: Category -> representative density (g/cm³). Turkish categories added in Phase 3.
 CATEGORY_DENSITY: dict[str, float] = {
     "pastry": 0.60,
     "syrup_pastry": 1.20,
@@ -37,6 +37,19 @@ CATEGORY_DENSITY: dict[str, float] = {
     "fried_dough": 0.35,
     "rice_bowl": 0.85,
     "wrap": 0.90,
+    # Turkish + everyday-essentials categories
+    "flatbread": 0.55,      # lahmacun — thin
+    "doner_meat": 1.05,     # döner — dense mound
+    "porous_dough": 0.35,   # pide — airy
+    "stew": 1.00,           # kuru fasulye
+    "soup": 1.00,           # mercimek çorbası
+    "rice": 0.85,           # pilav / cooked rice
+    "egg_dish": 0.90,
+    "poultry": 1.05,
+    "fruit": 0.94,
+    "dairy": 1.03,
+    "grain": 1.00,
+    "bread": 0.30,
 }
 
 #: Class -> geometric shape prior used by the volume engine.
@@ -82,6 +95,19 @@ CATEGORY_HEIGHT_CM: dict[str, float] = {
     "fried_dough": 4.0,
     "rice_bowl": 5.0,
     "wrap": 5.0,
+    # Turkish + everyday-essentials categories
+    "flatbread": 0.8,
+    "doner_meat": 6.0,
+    "porous_dough": 3.0,
+    "stew": 4.0,
+    "soup": 4.0,
+    "rice": 4.0,
+    "egg_dish": 2.5,
+    "poultry": 2.5,
+    "fruit": 3.5,
+    "dairy": 3.0,
+    "grain": 2.5,
+    "bread": 4.0,
 }
 
 DEFAULT_HEIGHT_CM: float = 2.5
