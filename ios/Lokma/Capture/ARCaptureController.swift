@@ -15,9 +15,36 @@ import Foundation
 import LokmaCore
 import simd
 
+/// App-level camera tracking quality, decoupled from ARKit's enum so view state
+/// need not import ARKit. `.limited` folds every reason ARKit tracks poorly
+/// (initialising, relocalising, insufficient features, excessive motion).
+public enum TrackingQuality: Equatable {
+    case normal
+    case limited
+    case unavailable
+
+    init(_ state: ARCamera.TrackingState) {
+        switch state {
+        case .normal: self = .normal
+        case .limited: self = .limited
+        case .notAvailable: self = .unavailable
+        @unknown default: self = .unavailable
+        }
+    }
+}
+
 public protocol ARCaptureDelegate: AnyObject {
     /// Called on a background-friendly cadence with one capture + its context.
     func capture(_ controller: ARCaptureController, didProduce pixelBuffer: CVPixelBuffer, context: FrameContext)
+
+    /// Live capture-quality signal (~10 Hz), emitted even when inference is gated
+    /// or skipped, so the UI can guide the user. `tiltDeg` is the current top-down
+    /// angle (nil only if no camera pose is available).
+    func capture(_ controller: ARCaptureController, didUpdateTracking quality: TrackingQuality, tiltDeg: Double?)
+}
+
+public extension ARCaptureDelegate {
+    func capture(_ controller: ARCaptureController, didUpdateTracking quality: TrackingQuality, tiltDeg: Double?) {}
 }
 
 public final class ARCaptureController: NSObject, ARSessionDelegate {
@@ -29,6 +56,9 @@ public final class ARCaptureController: NSObject, ARSessionDelegate {
     private var lastProcessed: TimeInterval = 0
     /// Cap inference cadence; ARKit delivers ~60 fps but we only need a few.
     public var minInterval: TimeInterval = 1.0 / 4.0
+    /// Capture-quality signal cadence — higher than inference for responsive guidance.
+    public var minTrackingInterval: TimeInterval = 1.0 / 10.0
+    private var lastTrackingNotify: TimeInterval = 0
 
     public init(config: AppConfig = AppConfig()) {
         self.config = config
@@ -51,7 +81,21 @@ public final class ARCaptureController: NSObject, ARSessionDelegate {
     // MARK: - ARSessionDelegate
 
     public func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        let camera = frame.camera
+
+        // Live guidance signal — emitted even while inference is gated/skipped so the
+        // UI can react to limited tracking or a steep angle in real time.
+        if frame.timestamp - lastTrackingNotify >= minTrackingInterval {
+            lastTrackingNotify = frame.timestamp
+            delegate?.capture(self, didUpdateTracking: TrackingQuality(camera.trackingState),
+                              tiltDeg: tiltDegFromTopDown(camera.transform))
+        }
+
         guard frame.timestamp - lastProcessed >= minInterval else { return }
+        // Pose-derived scale (tilt + intrinsics) is only trustworthy under normal
+        // tracking; skip initialising/relocalising frames so a bad camera transform
+        // can't poison the depth sample or the tilt correction.
+        guard case .normal = camera.trackingState else { return }
         lastProcessed = frame.timestamp
         let context = makeContext(from: frame)
         delegate?.capture(self, didProduce: frame.capturedImage, context: context)
@@ -100,7 +144,9 @@ public final class ARCaptureController: NSObject, ARSessionDelegate {
         return acos(cosA) * 180.0 / .pi
     }
 
-    /// Median of valid metric depths near the frame centre, in mm; nil if no depth.
+    /// Robust representative depth near the frame centre, in mm; nil if none.
+    /// Drops low-confidence LiDAR returns (`ARConfidenceLevel.low`) and MAD-rejects
+    /// outliers before the median, so edge/shiny-surface noise can't drag the scale.
     private func representativeDepthMm(_ depth: ARDepthData?) -> Double? {
         guard let depth else { return nil }
         let map = depth.depthMap
@@ -110,23 +156,45 @@ public final class ARCaptureController: NSObject, ARSessionDelegate {
 
         let w = CVPixelBufferGetWidth(map)
         let h = CVPixelBufferGetHeight(map)
-        let rowBytes = CVPixelBufferGetBytesPerRow(map)
+        let stride = CVPixelBufferGetBytesPerRow(map) / MemoryLayout<Float32>.size
         let ptr = base.assumingMemoryBound(to: Float32.self)
-        let stride = rowBytes / MemoryLayout<Float32>.size
 
-        // Sample a centred window (~40% of each side).
+        // Confidence map shares the depth map's dimensions (1 byte/px: 0 low, 1 med, 2 high).
+        let confMap = depth.confidenceMap
+        if let confMap { CVPixelBufferLockBaseAddress(confMap, .readOnly) }
+        defer { if let confMap { CVPixelBufferUnlockBaseAddress(confMap, .readOnly) } }
+        let confPtr = confMap.flatMap { CVPixelBufferGetBaseAddress($0)?.assumingMemoryBound(to: UInt8.self) }
+        let confStride = confMap.map { CVPixelBufferGetBytesPerRow($0) / MemoryLayout<UInt8>.size } ?? 0
+        let lowConf = UInt8(ARConfidenceLevel.low.rawValue)
+
+        // Sample a centred window (~40% of each side); keep valid, non-low-confidence depths.
         var samples: [Float] = []
         let x0 = Int(Double(w) * 0.3), x1 = Int(Double(w) * 0.7)
         let y0 = Int(Double(h) * 0.3), y1 = Int(Double(h) * 0.7)
         for y in y0..<y1 {
             for x in x0..<x1 {
                 let v = ptr[y * stride + x]
-                if v.isFinite && v > 0 { samples.append(v) }
+                guard v.isFinite, v > 0 else { continue }
+                if let confPtr, confPtr[y * confStride + x] == lowConf { continue }
+                samples.append(v)
             }
         }
         guard !samples.isEmpty else { return nil }
-        samples.sort()
-        let meters = Double(samples[samples.count / 2])
-        return meters * 1000.0
+
+        let med = Self.median(&samples)                       // sorts samples in place
+        guard samples.count >= 8 else { return Double(med) * 1000.0 }
+        // Median absolute deviation outlier rejection, then the median of survivors.
+        var deviations = samples.map { abs($0 - med) }
+        let mad = Self.median(&deviations)
+        let cutoff = 3.0 * mad + 1e-6
+        var kept = samples.filter { abs($0 - med) <= cutoff }
+        if kept.isEmpty { kept = samples }
+        return Double(Self.median(&kept)) * 1000.0
+    }
+
+    /// In-place median (sorts the input); caller guarantees a non-empty array.
+    private static func median(_ xs: inout [Float]) -> Float {
+        xs.sort()
+        return xs[xs.count / 2]
     }
 }

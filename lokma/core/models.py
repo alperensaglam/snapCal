@@ -7,6 +7,7 @@ were the source of brittle unpacking bugs.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping
@@ -220,6 +221,25 @@ class AnchorDetection:
     tilt_deg: float | None = None
 
 
+#: Beyond this incidence angle the 1/cos(θ) area correction is clamped and the
+#: volumetric path is gated off (AutoStrategy) — grazing views aren't trustworthy.
+MAX_FORESHORTENING_TILT_DEG: float = 65.0
+
+
+def _foreshortening(tilt_deg: float | None) -> float:
+    """Area foreshortening factor cos(θ) for a plane viewed at incidence θ.
+
+    A flat food patch viewed at tilt θ from top-down projects to cos(θ)× fewer
+    pixels, so recovering its true footprint area divides by this factor. Unknown
+    tilt → 1.0 (assume top-down); clamped at ``MAX_FORESHORTENING_TILT_DEG`` so the
+    reciprocal can't blow up at grazing angles.
+    """
+    if tilt_deg is None:
+        return 1.0
+    clamped = min(max(tilt_deg, 0.0), MAX_FORESHORTENING_TILT_DEG)
+    return max(math.cos(math.radians(clamped)), 1e-3)
+
+
 @dataclass(frozen=True)
 class ScaleEstimate:
     """The per-frame calibration result: how many millimetres a pixel spans."""
@@ -236,8 +256,14 @@ class ScaleEstimate:
         return self.mm_per_px ** 2
 
     def area_px_to_cm2(self, area_px: float) -> float:
-        """Scalar path (Phase 2, top-down): pixel area -> cm²."""
-        return area_px * self.mm2_per_px2 / 100.0
+        """Metric footprint area from pixel area, tilt-corrected.
+
+        Top-down scaling ``area_px · mm²/px² / 100`` is exact only when the optical
+        axis is perpendicular to the food plane; at incidence ``tilt_deg`` the
+        footprint is foreshortened, so divide by ``cos(θ)`` (see ``_foreshortening``).
+        """
+        topdown = area_px * self.mm2_per_px2 / 100.0
+        return topdown / _foreshortening(self.tilt_deg)
 
     def contour_area_to_cm2(self, contour: np.ndarray) -> float:
         """Geometry-aware path (Phase 4): warp a contour to metric space, then area.

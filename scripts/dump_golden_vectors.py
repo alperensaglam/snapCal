@@ -102,10 +102,20 @@ def intrinsics_from_mm() -> list[dict]:
 
 def area_px_to_cm2() -> list[dict]:
     cases = []
-    for mm_per_px, area_px in [(0.5, 50_000.0), (1.2, 12_345.0), (0.83, 0.0), (2.0, 90_000.0)]:
-        se = ScaleEstimate(mm_per_px=mm_per_px, source=_first_source(), confidence=0.9)
+    # (mm_per_px, area_px, tilt_deg). tilt None/0 is top-down (factor 1.0); oblique
+    # angles exercise the 1/cos(θ) foreshortening; 80° trips the 65° clamp.
+    specs = [
+        (0.5, 50_000.0, None),
+        (1.2, 12_345.0, 0.0),
+        (0.83, 0.0, 30.0),
+        (2.0, 90_000.0, 45.0),
+        (0.5, 50_000.0, 60.0),
+        (0.5, 50_000.0, 80.0),  # clamped at MAX_FORESHORTENING_TILT_DEG
+    ]
+    for mm_per_px, area_px, tilt_deg in specs:
+        se = ScaleEstimate(mm_per_px=mm_per_px, source=_first_source(), confidence=0.9, tilt_deg=tilt_deg)
         cases.append({
-            "mm_per_px": mm_per_px, "area_px": area_px,
+            "mm_per_px": mm_per_px, "area_px": area_px, "tilt_deg": tilt_deg,
             "expect_mm2_per_px2": se.mm2_per_px2,
             "expect_cm2": se.area_px_to_cm2(area_px),
         })
@@ -218,18 +228,24 @@ def auto_strategy() -> list[dict]:
     auto = AutoStrategy()
     cases = []
     threshold = CFG.calibration_confidence_threshold
+    # (confidence, tilt_deg). The tilt gate sends a confident-but-oblique frame to
+    # the uncalibrated fallback; a moderate tilt stays volumetric (foreshortening-corrected).
     specs = [
-        (0.90, "above"),   # confident -> volumetric
-        (0.30, "below"),   # not confident -> pixel_ratio:uncalibrated
-        (None, "noscale"),  # no scale -> pixel_ratio:uncalibrated
+        (0.90, None),   # confident, top-down -> volumetric
+        (0.30, None),   # not confident -> pixel_ratio:uncalibrated
+        (None, None),   # no scale -> pixel_ratio:uncalibrated
+        (0.90, 70.0),   # confident but too oblique -> gated to pixel_ratio:uncalibrated
+        (0.90, 40.0),   # confident, moderate tilt -> volumetric
     ]
-    for conf, _tag in specs:
-        se = None if conf is None else ScaleEstimate(mm_per_px=0.5, source=_first_source(), confidence=conf)
+    for conf, tilt_deg in specs:
+        se = None if conf is None else ScaleEstimate(
+            mm_per_px=0.5, source=_first_source(), confidence=conf, tilt_deg=tilt_deg
+        )
         food = _food(class_name="baklava", density=1.2, ref_area=50_000.0, portion_g=150.0)
         det = _detection(area_sq=60_000.0, area_frame=90_000.0)
         m = auto.estimate(det, food, _ctx(se))
         cases.append({
-            "scale_confidence": conf, "threshold": threshold,
+            "scale_confidence": conf, "tilt_deg": tilt_deg, "threshold": threshold,
             "expect_grams": m.grams, "expect_method": m.method,
         })
     return cases

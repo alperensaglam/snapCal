@@ -238,9 +238,25 @@ public struct ScaleEstimate: Sendable, Equatable {
 
     public var mm2PerPx2: Double { mmPerPx * mmPerPx }
 
-    /// Scalar path (top-down): pixel area → cm² (models.py:238-240).
+    /// Beyond this incidence angle the 1/cos(θ) area correction is clamped and the
+    /// volumetric path is gated off (AutoStrategy) — grazing views aren't trustworthy.
+    public static let maxForeshorteningTiltDeg = 65.0
+
+    /// Area foreshortening factor cos(θ) for a plane viewed at incidence θ. Unknown
+    /// tilt → 1.0 (top-down); clamped so the reciprocal can't blow up at grazing
+    /// angles. Mirrors `_foreshortening` (models.py).
+    public static func foreshortening(_ tiltDeg: Double?) -> Double {
+        guard let t = tiltDeg else { return 1.0 }
+        let clamped = min(max(t, 0.0), maxForeshorteningTiltDeg)
+        return max(cos(clamped * .pi / 180.0), 1e-3)
+    }
+
+    /// Metric footprint area from pixel area, tilt-corrected (models.py:area_px_to_cm2).
+    /// Top-down scaling is exact only for a perpendicular optical axis; divide by
+    /// cos(tilt) to undo plane foreshortening at oblique holding angles.
     public func areaPxToCm2(_ areaPx: Double) -> Double {
-        areaPx * mm2PerPx2 / 100.0
+        let topdown = areaPx * mm2PerPx2 / 100.0
+        return topdown / Self.foreshortening(tiltDeg)
     }
 
     public static func == (lhs: ScaleEstimate, rhs: ScaleEstimate) -> Bool {

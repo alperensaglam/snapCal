@@ -58,26 +58,44 @@
     {
       "mm_per_px": 0.5,
       "area_px": 50000.0,
+      "tilt_deg": null,
       "expect_mm2_per_px2": 0.25,
       "expect_cm2": 125.0
     },
     {
       "mm_per_px": 1.2,
       "area_px": 12345.0,
+      "tilt_deg": 0.0,
       "expect_mm2_per_px2": 1.44,
       "expect_cm2": 177.768
     },
     {
       "mm_per_px": 0.83,
       "area_px": 0.0,
+      "tilt_deg": 30.0,
       "expect_mm2_per_px2": 0.6889,
       "expect_cm2": 0.0
     },
     {
       "mm_per_px": 2.0,
       "area_px": 90000.0,
+      "tilt_deg": 45.0,
       "expect_mm2_per_px2": 4.0,
-      "expect_cm2": 3600.0
+      "expect_cm2": 5091.168824543141
+    },
+    {
+      "mm_per_px": 0.5,
+      "area_px": 50000.0,
+      "tilt_deg": 60.0,
+      "expect_mm2_per_px2": 0.25,
+      "expect_cm2": 249.99999999999994
+    },
+    {
+      "mm_per_px": 0.5,
+      "area_px": 50000.0,
+      "tilt_deg": 80.0,
+      "expect_mm2_per_px2": 0.25,
+      "expect_cm2": 295.77519789406233
     }
   ],
   "volume": [
@@ -290,21 +308,38 @@
   "auto_strategy": [
     {
       "scale_confidence": 0.9,
+      "tilt_deg": null,
       "threshold": 0.5,
       "expect_grams": 1080.0,
       "expect_method": "volumetric:database"
     },
     {
       "scale_confidence": 0.3,
+      "tilt_deg": null,
       "threshold": 0.5,
       "expect_grams": 180.0,
       "expect_method": "pixel_ratio:uncalibrated"
     },
     {
       "scale_confidence": null,
+      "tilt_deg": null,
       "threshold": 0.5,
       "expect_grams": 180.0,
       "expect_method": "pixel_ratio:uncalibrated"
+    },
+    {
+      "scale_confidence": 0.9,
+      "tilt_deg": 70.0,
+      "threshold": 0.5,
+      "expect_grams": 180.0,
+      "expect_method": "pixel_ratio:uncalibrated"
+    },
+    {
+      "scale_confidence": 0.9,
+      "tilt_deg": 40.0,
+      "threshold": 0.5,
+      "expect_grams": 1409.8398724788608,
+      "expect_method": "volumetric:database"
     }
   ],
   "calibration_levels": [

@@ -15,7 +15,13 @@ from dataclasses import dataclass
 
 from lokma.config import AppConfig
 from lokma.core.exceptions import ConfigurationError
-from lokma.core.models import Detection, FoodRecord, MassEstimate, ScaleEstimate
+from lokma.core.models import (
+    MAX_FORESHORTENING_TILT_DEG,
+    Detection,
+    FoodRecord,
+    MassEstimate,
+    ScaleEstimate,
+)
 from lokma.density.categories import height_for
 from lokma.density.density_service import DensityService
 from lokma.geometry.volume_engine import VolumeEngineService
@@ -77,6 +83,11 @@ class VolumetricStrategy(MassEstimationStrategy):
         )
 
 
+def _tilt_trustworthy(tilt_deg: float | None) -> bool:
+    """Volumetric area scaling degrades past a grazing incidence; gate it off there."""
+    return tilt_deg is None or tilt_deg <= MAX_FORESHORTENING_TILT_DEG
+
+
 class AutoStrategy(MassEstimationStrategy):
     """Safe activation: volumetric only when calibration is confident enough."""
 
@@ -89,9 +100,9 @@ class AutoStrategy(MassEstimationStrategy):
     def estimate(self, detection, food, ctx):
         scale = ctx.scale
         threshold = ctx.config.calibration_confidence_threshold
-        if scale is not None and scale.confidence >= threshold:
+        if scale is not None and scale.confidence >= threshold and _tilt_trustworthy(scale.tilt_deg):
             return self._volumetric.estimate(detection, food, ctx)
-        # Not trustworthy enough — fall back and mark it.
+        # Not trustworthy enough (low confidence or too oblique) — fall back and mark it.
         base = self._pixel_ratio.estimate(detection, food, ctx)
         return MassEstimate(
             grams=base.grams,

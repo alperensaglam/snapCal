@@ -50,10 +50,23 @@ final class ParityTests: XCTestCase {
 
     func testAreaPxToCm2() {
         for c in golden.areaPxToCm2 {
-            let se = ScaleEstimate(mmPerPx: c.mmPerPx, source: .depthIntrinsics, confidence: 0.9)
+            let se = ScaleEstimate(mmPerPx: c.mmPerPx, source: .depthIntrinsics, confidence: 0.9, tiltDeg: c.tiltDeg)
             XCTAssertEqual(se.mm2PerPx2, c.expectMm2PerPx2, accuracy: EPS)
             XCTAssertEqual(se.areaPxToCm2(c.areaPx), c.expectCm2, accuracy: EPS)
         }
+    }
+
+    // Standalone sanity for the tilt correction (independent of the generator).
+    func testForeshorteningMath() {
+        XCTAssertEqual(ScaleEstimate.foreshortening(nil), 1.0, accuracy: EPS)
+        XCTAssertEqual(ScaleEstimate.foreshortening(0.0), 1.0, accuracy: EPS)
+        XCTAssertEqual(ScaleEstimate.foreshortening(60.0), 0.5, accuracy: 1e-9)   // cos 60° = 0.5
+        // 80° is clamped to the 65° ceiling.
+        XCTAssertEqual(ScaleEstimate.foreshortening(80.0), cos(65.0 * .pi / 180.0), accuracy: EPS)
+        // A 60° tilt doubles the recovered footprint area vs top-down.
+        let topdown = ScaleEstimate(mmPerPx: 0.5, source: .depthIntrinsics, confidence: 0.9, tiltDeg: 0.0)
+        let tilted = ScaleEstimate(mmPerPx: 0.5, source: .depthIntrinsics, confidence: 0.9, tiltDeg: 60.0)
+        XCTAssertEqual(tilted.areaPxToCm2(50_000.0), 2.0 * topdown.areaPxToCm2(50_000.0), accuracy: 1e-9)
     }
 
     func testVolume() {
@@ -127,7 +140,7 @@ final class ParityTests: XCTestCase {
     func testAutoStrategy() throws {
         let strategy = AutoStrategy()
         for c in golden.autoStrategy {
-            let se = c.scaleConfidence.map { ScaleEstimate(mmPerPx: 0.5, source: .depthIntrinsics, confidence: $0) }
+            let se = c.scaleConfidence.map { ScaleEstimate(mmPerPx: 0.5, source: .depthIntrinsics, confidence: $0, tiltDeg: c.tiltDeg) }
             let food = makeFood(className: "baklava", portionG: 150.0, refArea: 50_000.0,
                                 density: 1.2, geometricShape: "prism")
             let det = makeDetection(areaSq: 60_000.0, areaFrame: 90_000.0)
@@ -245,7 +258,9 @@ private struct Golden: Decodable {
         let expectFocalPx, expectCx, expectCy: Double
     }
     struct AreaCase: Decodable {
-        let mmPerPx, areaPx, expectMm2PerPx2, expectCm2: Double
+        let mmPerPx, areaPx: Double
+        let tiltDeg: Double?
+        let expectMm2PerPx2, expectCm2: Double
     }
     struct VolumeCase: Decodable {
         let areaCm2: Double; let shape: String; let heightCm, expectVolumeCm3: Double
@@ -270,7 +285,7 @@ private struct Golden: Decodable {
         let expectGrams, expectVolumeCm3, expectDensityUsed: Double
     }
     struct AutoCase: Decodable {
-        let scaleConfidence: Double?; let threshold, expectGrams: Double; let expectMethod: String
+        let scaleConfidence, tiltDeg: Double?; let threshold, expectGrams: Double; let expectMethod: String
     }
     struct CalibrationCase: Decodable {
         let level: String; let focalPx: Double; let depthMm, defaultDistanceMm: Double?

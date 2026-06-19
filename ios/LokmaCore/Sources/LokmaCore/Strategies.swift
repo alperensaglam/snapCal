@@ -76,13 +76,19 @@ public struct AutoStrategy: MassEstimationStrategy {
     private let pixelRatio = PixelRatioStrategy()
     public init() {}
 
+    /// Volumetric area scaling degrades past a grazing incidence; gate it off there.
+    static func tiltTrustworthy(_ tiltDeg: Double?) -> Bool {
+        guard let t = tiltDeg else { return true }
+        return t <= ScaleEstimate.maxForeshorteningTiltDeg
+    }
+
     public func estimate(_ detection: Detection, _ food: FoodRecord, _ ctx: MassContext) throws -> MassEstimate {
         let scale = ctx.scale
         let threshold = ctx.config.calibrationConfidenceThreshold
-        if let scale, scale.confidence >= threshold {
+        if let scale, scale.confidence >= threshold, Self.tiltTrustworthy(scale.tiltDeg) {
             return try volumetric.estimate(detection, food, ctx)
         }
-        // Not trustworthy enough — fall back and mark it.
+        // Not trustworthy enough (low confidence or too oblique) — fall back and mark it.
         let base = try pixelRatio.estimate(detection, food, ctx)
         return MassEstimate(
             grams: base.grams,
