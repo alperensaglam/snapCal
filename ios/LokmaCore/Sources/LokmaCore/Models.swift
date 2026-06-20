@@ -116,6 +116,28 @@ public struct DepthSample: Sendable, Equatable {
         self.cx = cx
         self.cy = cy
     }
+
+    /// Mean camera-space 3D point (mm) of the valid food pixels (mask ≥ 0.5, depth > 0),
+    /// back-projected with the DepthVolumeEngine convention. nil when no valid food depth.
+    /// Used by InstanceTracker to derive a per-instance spatial key.
+    public func cameraCentroidMm() -> (x: Double, y: Double, z: Double)? {
+        var sx = 0.0, sy = 0.0, sz = 0.0, n = 0
+        for v in 0..<height {
+            for u in 0..<width {
+                let i = v * width + u
+                guard mask[i] >= 0.5 else { continue }
+                let z = depthMm[i]
+                guard z.isFinite, z > 0 else { continue }
+                sx += (Double(u) - cx) / fx * z
+                sy += (Double(v) - cy) / fy * z
+                sz += z
+                n += 1
+            }
+        }
+        guard n > 0 else { return nil }
+        let dn = Double(n)
+        return (sx / dn, sy / dn, sz / dn)
+    }
 }
 
 /// One segmented food instance, reduced to the two pixel-area scalars the

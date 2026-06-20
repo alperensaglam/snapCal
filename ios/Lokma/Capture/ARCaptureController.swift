@@ -116,7 +116,7 @@ public final class ARCaptureController: NSObject, ARSessionDelegate {
             fx: Double(intr.columns.0.x), fy: Double(intr.columns.1.y),
             cx: Double(intr.columns.2.x), cy: Double(intr.columns.2.y)
         )
-        return DepthCapture(field: field, geometry: geometry)
+        return DepthCapture(field: field, geometry: geometry, cameraTransform: camera.transform)
     }
 
     // MARK: - ARFrame -> FrameContext

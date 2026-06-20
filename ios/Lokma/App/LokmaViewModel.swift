@@ -5,6 +5,7 @@ import Combine
 import CoreVideo
 import Foundation
 import LokmaCore
+import simd
 
 @MainActor
 public final class LokmaViewModel: ObservableObject {
@@ -20,8 +21,8 @@ public final class LokmaViewModel: ObservableObject {
     private let engine: EstimationEngine?
     private let config = AppConfig()
     private let inferenceQueue = DispatchQueue(label: "com.lokma.inference", qos: .userInitiated)
-    /// Temporal smoothing of displayed grams (presentation stability under motion).
-    private let stabilizer = MassStabilizer()
+    /// Per-instance temporal smoothing of displayed grams (presentation stability).
+    private let tracker = InstanceTracker()
     private var busy = false
 
     // Live capture-quality signals feeding `guidance` (updated from two cadences:
@@ -57,12 +58,17 @@ public final class LokmaViewModel: ObservableObject {
     public func start() { capture.start() }
     public func stop() { capture.pause() }
 
-    /// Re-label results with temporally smoothed grams (and the matching kcal),
-    /// reusing `AnnotatedResult.label` so the overlay format stays in one place.
-    private func stabilizedLabels(_ results: [AnnotatedResult]) -> [String] {
-        results.map { r in
+    /// Re-label results with per-instance temporally smoothed grams (and matching kcal),
+    /// reusing `AnnotatedResult.label` so the overlay format stays in one place. Each
+    /// detection is smoothed within its own spatial track (world centroid), so two
+    /// plates of the same dish don't cross-contaminate.
+    private func stabilizedLabels(_ results: [AnnotatedResult], cameraTransform: simd_float4x4?) -> [String] {
+        let now = Date()   // one timestamp per frame so same-class plates can't share a track
+        return results.map { r in
             guard let food = r.food, let mass = r.mass else { return r.label }
-            let grams = stabilizer.smooth(className: r.detection.className, grams: mass.grams)
+            let position = worldCentroid(r.detection, cameraTransform: cameraTransform)
+            let grams = tracker.smooth(className: r.detection.className, grams: mass.grams,
+                                       position: position, now: now)
             let smoothedMass = MassEstimate(
                 grams: grams, method: mass.method, densityUsed: mass.densityUsed,
                 volumeCm3: mass.volumeCm3, calibrationSource: mass.calibrationSource,
@@ -72,6 +78,17 @@ public final class LokmaViewModel: ObservableObject {
             return AnnotatedResult(detection: r.detection, food: food,
                                    mass: smoothedMass, nutrition: nutrition).label
         }
+    }
+
+    /// World centroid (metres) of a detection from its depth sample + camera pose; nil
+    /// → InstanceTracker falls back to class-bucket smoothing. The depth centroid is in
+    /// the CV intrinsics frame (+Z forward, +Y down); flip Y,Z to ARKit camera-local
+    /// (−Z forward, +Y up) before applying the camera→world transform.
+    private func worldCentroid(_ detection: Detection, cameraTransform: simd_float4x4?) -> (Double, Double, Double)? {
+        guard let transform = cameraTransform, let c = detection.depthSample?.cameraCentroidMm() else { return nil }
+        let cam = SIMD4<Float>(Float(c.x / 1000.0), Float(-c.y / 1000.0), Float(-c.z / 1000.0), 1)
+        let world = transform * cam
+        return (Double(world.x), Double(world.y), Double(world.z))
     }
 
     /// Recompute the live on-screen guidance from the latest quality signals.
@@ -145,7 +162,7 @@ extension LokmaViewModel: ARCaptureDelegate {
                 }
                 let (results, scale) = engine.process(detections: detections, context: context)
                 Task { @MainActor in
-                    self?.labels = self?.stabilizedLabels(results) ?? []
+                    self?.labels = self?.stabilizedLabels(results, cameraTransform: depth?.cameraTransform) ?? []
                     self?.calibrationSource = scale?.source.rawValue ?? "none"
                     self?.calibrationConfidence = scale?.confidence ?? 0
                     self?.status = results.isEmpty ? "No food detected" : "\(results.count) item(s)"

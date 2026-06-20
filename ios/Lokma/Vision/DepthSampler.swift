@@ -19,6 +19,9 @@ public struct DepthField: Sendable {
 public struct DepthCapture: Sendable {
     public let field: DepthField
     public let geometry: FrameGeometry
+    /// Camera→world pose (ARKit), for unprojecting a detection's depth centroid to a
+    /// stable world position the InstanceTracker keys on.
+    public let cameraTransform: simd_float4x4
 }
 
 public enum DepthSampler {
