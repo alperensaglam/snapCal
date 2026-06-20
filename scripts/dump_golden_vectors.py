@@ -32,7 +32,7 @@ from lokma.core.models import (  # noqa: E402
     NutritionResult,
     ScaleEstimate,
 )
-from lokma.density.categories import density_for, height_for  # noqa: E402
+from lokma.density.categories import density_for, height_for, porosity_for  # noqa: E402
 from lokma.density.density_service import DensityService  # noqa: E402
 from lokma.geometry.calibration_service import (  # noqa: E402
     CalibrationResolver,
@@ -152,6 +152,11 @@ def density_lookup() -> list[dict]:
 def height_lookup() -> list[dict]:
     names = ["baklava", "apple_pie", "beef_carpaccio", "doner", "egg", "banana", "unknown_food"]
     return [{"class_name": n, "expect_height_cm": height_for(n)} for n in names]
+
+
+def porosity_lookup() -> list[dict]:
+    names = ["baklava", "beet_salad", "beignets", "baby_back_ribs", "breakfast_burrito", "bibimbap", "unknown_food"]
+    return [{"class_name": n, "expect_porosity": porosity_for(n)} for n in names]
 
 
 def density_resolve() -> list[dict]:
@@ -440,19 +445,23 @@ def auto_depth() -> list[dict]:
         width=W, height=H, fx=fx, fy=fy, cx=cx, cy=cy,
     )
     food = _food(class_name="baklava", density=1.2, ref_area=50_000.0, portion_g=150.0)
-    det = Detection(
-        class_id=0, class_name="baklava", confidence=0.9,
-        mask=np.zeros((4, 4), dtype=np.float32), bbox=(0.0, 0.0, 1.0, 1.0),
-        mask_area_px=60_000.0, mask_area_px_frame=90_000.0, frame_size=(640, 480),
-        depth_sample=sample,
-    )
-    m = auto.estimate(det, food, _ctx(None))
-    return [{
-        "width": W, "height": H, "fx": fx, "fy": fy, "cx": cx, "cy": cy,
-        "depth": sample.depth_mm, "mask": sample.mask,
-        "class_name": "baklava", "db_density": 1.2,
-        "expect_grams": m.grams, "expect_volume_cm3": m.volume_cm3, "expect_method": m.method,
-    }]
+    # predicted=None -> category fallback (baklava=syrup_pastry, P=0.05); predicted=0.30 overrides.
+    cases = []
+    for predicted in (None, 0.30):
+        det = Detection(
+            class_id=0, class_name="baklava", confidence=0.9,
+            mask=np.zeros((4, 4), dtype=np.float32), bbox=(0.0, 0.0, 1.0, 1.0),
+            mask_area_px=60_000.0, mask_area_px_frame=90_000.0, frame_size=(640, 480),
+            depth_sample=sample, predicted_porosity=predicted,
+        )
+        m = auto.estimate(det, food, _ctx(None))
+        cases.append({
+            "width": W, "height": H, "fx": fx, "fy": fy, "cx": cx, "cy": cy,
+            "depth": sample.depth_mm, "mask": sample.mask,
+            "class_name": "baklava", "db_density": 1.2, "predicted_porosity": predicted,
+            "expect_grams": m.grams, "expect_volume_cm3": m.volume_cm3, "expect_method": m.method,
+        })
+    return cases
 
 
 def _first_source():
@@ -487,6 +496,7 @@ def main() -> None:
         "volume": volume(),
         "density_lookup": density_lookup(),
         "height_lookup": height_lookup(),
+        "porosity_lookup": porosity_lookup(),
         "density_resolve": density_resolve(),
         "nutrition": nutrition(),
         "pixel_ratio": pixel_ratio(),

@@ -61,7 +61,7 @@ public struct VolumetricStrategy: MassEstimationStrategy {
         let shape = food.geometricShape ?? "prism"
         let heightCm = Categories.heightFor(food.className)
         let volume = ctx.volumeEngine.estimateVolume(realAreaCm2: realAreaCm2, shape: shape, heightCm: heightCm)
-        let grams = volume.volumeCm3 * density
+        let grams = volume.volumeCm3 * density * (1.0 - effectivePorosity(detection, food))
         return MassEstimate(
             grams: grams,
             method: "\(name):\(densitySource.rawValue)",
@@ -91,7 +91,7 @@ public struct AutoStrategy: MassEstimationStrategy {
         if let sample = detection.depthSample, let dv = ctx.depthEngine.integrate(sample) {
             let (density, densitySource) = ctx.densityService.resolve(food)
             return MassEstimate(
-                grams: dv.volumeCm3 * density,
+                grams: dv.volumeCm3 * density * (1.0 - effectivePorosity(detection, food)),
                 method: "volumetric_depth:\(densitySource.rawValue)",
                 densityUsed: density,
                 volumeCm3: dv.volumeCm3,
@@ -116,6 +116,13 @@ public struct AutoStrategy: MassEstimationStrategy {
             calibrationConfidence: scale?.confidence
         )
     }
+}
+
+/// Effective porosity P for the mass correction `× (1 − P)`: the per-instance
+/// ML-predicted value when present, else the per-class category fallback (mirrors the
+/// DensityService resolution hierarchy). `Mass = V · ρ · (1 − P)`.
+public func effectivePorosity(_ detection: Detection, _ food: FoodRecord) -> Double {
+    detection.predictedPorosity ?? Categories.porosityFor(food.className)
 }
 
 public func makeStrategy(_ name: String) throws -> MassEstimationStrategy {

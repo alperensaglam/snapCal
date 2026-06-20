@@ -131,12 +131,14 @@ public struct Detection: Sendable, Equatable {
     /// Optional LiDAR depth+mask sample (Tier 2). When present, AutoStrategy prefers
     /// the measured depth-integrated volume; nil keeps the scalar path (parity default).
     public let depthSample: DepthSample?
+    /// Phase 5 hybrid porosity: per-instance ML-predicted P (future); nil → category fallback.
+    public let predictedPorosity: Double?
 
     public init(
         classId: Int, className: String, confidence: Double,
         bbox: (Double, Double, Double, Double) = (0, 0, 0, 0),
         maskAreaPx: Double, maskAreaPxFrame: Double = 0.0, frameSize: (Int, Int) = (0, 0),
-        depthSample: DepthSample? = nil
+        depthSample: DepthSample? = nil, predictedPorosity: Double? = nil
     ) {
         self.classId = classId
         self.className = className
@@ -146,13 +148,14 @@ public struct Detection: Sendable, Equatable {
         self.maskAreaPxFrame = maskAreaPxFrame
         self.frameSize = frameSize
         self.depthSample = depthSample
+        self.predictedPorosity = predictedPorosity
     }
 
     public static func == (lhs: Detection, rhs: Detection) -> Bool {
         lhs.classId == rhs.classId && lhs.className == rhs.className
             && lhs.confidence == rhs.confidence && lhs.maskAreaPx == rhs.maskAreaPx
             && lhs.maskAreaPxFrame == rhs.maskAreaPxFrame && lhs.frameSize == rhs.frameSize
-            && lhs.depthSample == rhs.depthSample
+            && lhs.depthSample == rhs.depthSample && lhs.predictedPorosity == rhs.predictedPorosity
     }
 }
 

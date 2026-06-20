@@ -22,7 +22,7 @@ from lokma.core.models import (
     MassEstimate,
     ScaleEstimate,
 )
-from lokma.density.categories import height_for
+from lokma.density.categories import height_for, porosity_for
 from lokma.density.density_service import DensityService
 from lokma.geometry.depth_volume_engine import DepthVolumeEngineService
 from lokma.geometry.volume_engine import VolumeEngineService
@@ -59,8 +59,16 @@ class PixelRatioStrategy(MassEstimationStrategy):
         return MassEstimate(grams=grams, method=self.name, density_used=None)
 
 
+def _effective_porosity(detection, food) -> float:
+    """Effective porosity P for ``× (1 − P)``: the per-instance ML-predicted value when
+    present, else the per-class category fallback (mirrors the DensityService hierarchy)."""
+    if detection.predicted_porosity is not None:
+        return detection.predicted_porosity
+    return porosity_for(food.class_name)
+
+
 class VolumetricStrategy(MassEstimationStrategy):
-    """Physical path: metric footprint area → volume → mass via ``m = V·ρ``."""
+    """Physical path: metric footprint area → volume → mass via ``m = V·ρ·(1−P)``."""
 
     name = "volumetric"
 
@@ -74,7 +82,7 @@ class VolumetricStrategy(MassEstimationStrategy):
         shape = food.geometric_shape or "prism"
         height_cm = height_for(food.class_name)
         volume = ctx.volume_engine.estimate_volume(real_area_cm2, shape, height_cm)
-        grams = volume.volume_cm3 * density
+        grams = volume.volume_cm3 * density * (1.0 - _effective_porosity(detection, food))
         return MassEstimate(
             grams=grams,
             method=f"{self.name}:{density_source.value}",
@@ -107,7 +115,7 @@ class AutoStrategy(MassEstimationStrategy):
             if dv is not None:
                 density, density_source = ctx.density_service.resolve(food)
                 return MassEstimate(
-                    grams=dv.volume_cm3 * density,
+                    grams=dv.volume_cm3 * density * (1.0 - _effective_porosity(detection, food)),
                     method=f"volumetric_depth:{density_source.value}",
                     density_used=density,
                     volume_cm3=dv.volume_cm3,

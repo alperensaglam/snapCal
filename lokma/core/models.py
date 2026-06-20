@@ -144,6 +144,7 @@ class Detection:
     mask_area_px_frame: float = 0.0           # at native frame grid — volumetric/scale
     frame_size: tuple[int, int] = (0, 0)      # (W, H) of the source frame
     depth_sample: "DepthSample | None" = None  # Tier 2 LiDAR depth+mask (optional)
+    predicted_porosity: float | None = None    # Phase 5: ML porosity P, else category fallback
 
 
 @dataclass(frozen=True)

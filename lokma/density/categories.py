@@ -119,3 +119,41 @@ def height_for(class_name: str) -> float:
     if category is not None and category in CATEGORY_HEIGHT_CM:
         return CATEGORY_HEIGHT_CM[category]
     return DEFAULT_HEIGHT_CM
+
+
+#: Category -> structural porosity / hollowness coefficient P in [0, 1). LiDAR is a
+#: 2.5D surface scanner and can't see air gaps under the top layer, so the measured
+#: volume is corrected by (1 - P): loose/airy foods read high, solids ~ 0. This is the
+#: static *fallback* layer — a per-instance ML-predicted P (Phase 7) overrides it.
+CATEGORY_POROSITY: dict[str, float] = {
+    "pastry": 0.15,
+    "syrup_pastry": 0.05,
+    "meat": 0.05,
+    "salad": 0.40,
+    "fried_dough": 0.35,
+    "rice_bowl": 0.25,
+    "wrap": 0.15,
+    # Turkish + everyday-essentials categories
+    "flatbread": 0.05,
+    "doner_meat": 0.10,
+    "porous_dough": 0.30,
+    "stew": 0.10,
+    "soup": 0.00,
+    "rice": 0.25,
+    "egg_dish": 0.10,
+    "poultry": 0.05,
+    "fruit": 0.05,
+    "dairy": 0.00,
+    "grain": 0.20,
+    "bread": 0.30,
+}
+
+DEFAULT_POROSITY: float = 0.0
+
+
+def porosity_for(class_name: str) -> float:
+    """Category porosity coefficient P for a class; 0.0 (solid) when unknown."""
+    category = CLASS_CATEGORY.get(_norm(class_name))
+    if category is not None and category in CATEGORY_POROSITY:
+        return CATEGORY_POROSITY[category]
+    return DEFAULT_POROSITY
