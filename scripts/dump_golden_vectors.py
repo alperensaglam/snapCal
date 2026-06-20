@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lokma.config import AppConfig  # noqa: E402
 from lokma.core.models import (  # noqa: E402
     CameraIntrinsics,
+    DepthSample,
     Detection,
     FoodRecord,
     FrameContext,
@@ -418,6 +419,42 @@ def depth_volume() -> list[dict]:
     return cases
 
 
+def auto_depth() -> list[dict]:
+    """AutoStrategy depth branch: a `depth_sample` present -> `volumetric_depth`,
+    even with no ScaleEstimate (depth is self-calibrated). Locks the grams = V·ρ
+    glue, the method string, and density resolution across the boundary.
+    """
+    auto = AutoStrategy()
+    W, H = 24, 18
+    fx = fy = 30.0
+    cx, cy = 12.0, 9.0
+    z0, h_box = 300.0, 20.0
+    depth = np.full((H, W), z0, dtype=np.float64)
+    mask = np.zeros((H, W), dtype=np.float64)
+    for v in range(6, 12):
+        for u in range(8, 16):
+            depth[v, u] = z0 - h_box
+            mask[v, u] = 1.0
+    sample = DepthSample(
+        depth_mm=depth.flatten().tolist(), mask=mask.flatten().tolist(),
+        width=W, height=H, fx=fx, fy=fy, cx=cx, cy=cy,
+    )
+    food = _food(class_name="baklava", density=1.2, ref_area=50_000.0, portion_g=150.0)
+    det = Detection(
+        class_id=0, class_name="baklava", confidence=0.9,
+        mask=np.zeros((4, 4), dtype=np.float32), bbox=(0.0, 0.0, 1.0, 1.0),
+        mask_area_px=60_000.0, mask_area_px_frame=90_000.0, frame_size=(640, 480),
+        depth_sample=sample,
+    )
+    m = auto.estimate(det, food, _ctx(None))
+    return [{
+        "width": W, "height": H, "fx": fx, "fy": fy, "cx": cx, "cy": cy,
+        "depth": sample.depth_mm, "mask": sample.mask,
+        "class_name": "baklava", "db_density": 1.2,
+        "expect_grams": m.grams, "expect_volume_cm3": m.volume_cm3, "expect_method": m.method,
+    }]
+
+
 def _first_source():
     from lokma.core.models import CalibrationSource
     return CalibrationSource.DEPTH_INTRINSICS
@@ -459,6 +496,7 @@ def main() -> None:
         "assumed_plate": assumed_plate(),
         "resolver_selection": resolver_selection(),
         "depth_volume": depth_volume(),
+        "auto_depth": auto_depth(),
     }
 
     out = (

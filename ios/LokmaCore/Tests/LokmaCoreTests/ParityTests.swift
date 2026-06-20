@@ -225,6 +225,22 @@ final class ParityTests: XCTestCase {
         }
     }
 
+    func testAutoDepth() throws {
+        let strategy = AutoStrategy()
+        for c in golden.autoDepth {
+            let sample = DepthSample(depthMm: c.depth, mask: c.mask, width: c.width, height: c.height,
+                                     fx: c.fx, fy: c.fy, cx: c.cx, cy: c.cy)
+            let food = makeFood(className: c.className, density: c.dbDensity)
+            let det = Detection(classId: 0, className: c.className, confidence: 0.9,
+                                maskAreaPx: 60_000.0, maskAreaPxFrame: 90_000.0,
+                                frameSize: (640, 480), depthSample: sample)
+            let m = try strategy.estimate(det, food, MassContext(scale: nil))
+            XCTAssertEqual(m.grams, c.expectGrams, accuracy: max(1e-6, abs(c.expectGrams) * 1e-6))
+            XCTAssertEqual(m.volumeCm3!, c.expectVolumeCm3, accuracy: 1e-6)
+            XCTAssertEqual(m.method, c.expectMethod)
+        }
+    }
+
     // Independent correctness check (not generator-derived): a flat top-down box
     // must integrate to height × world footprint area.
     func testDepthVolumeFlatClosedForm() throws {
@@ -291,6 +307,7 @@ private struct Golden: Decodable {
     let assumedPlate: [AssumedPlateCase]
     let resolverSelection: [ResolverCase]
     let depthVolume: [DepthVolumeCase]
+    let autoDepth: [AutoDepthCase]
 
     struct IntrinsicsCase: Decodable {
         let focalMm, pitchMm: Double
@@ -345,5 +362,14 @@ private struct Golden: Decodable {
         let depth, mask: [Double]
         let expectVolumeCm3, expectCoverage: Double?
         let expectMethod: String?
+    }
+    struct AutoDepthCase: Decodable {
+        let width, height: Int
+        let fx, fy, cx, cy: Double
+        let depth, mask: [Double]
+        let className: String
+        let dbDensity: Double?
+        let expectGrams, expectVolumeCm3: Double
+        let expectMethod: String
     }
 }

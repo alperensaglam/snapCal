@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from lokma.config import AppConfig
 from lokma.core.exceptions import ConfigurationError
@@ -24,6 +24,7 @@ from lokma.core.models import (
 )
 from lokma.density.categories import height_for
 from lokma.density.density_service import DensityService
+from lokma.geometry.depth_volume_engine import DepthVolumeEngineService
 from lokma.geometry.volume_engine import VolumeEngineService
 
 
@@ -35,6 +36,7 @@ class MassContext:
     volume_engine: VolumeEngineService
     density_service: DensityService
     config: AppConfig
+    depth_engine: DepthVolumeEngineService = field(default_factory=DepthVolumeEngineService)
 
 
 class MassEstimationStrategy(ABC):
@@ -98,11 +100,26 @@ class AutoStrategy(MassEstimationStrategy):
         self._pixel_ratio = PixelRatioStrategy()
 
     def estimate(self, detection, food, ctx):
+        # 1. Measured LiDAR depth volume — most accurate, and inherently tilt-robust
+        #    (the fitted plane absorbs orientation), so it needs no tilt gate.
+        if detection.depth_sample is not None:
+            dv = ctx.depth_engine.integrate_sample(detection.depth_sample)
+            if dv is not None:
+                density, density_source = ctx.density_service.resolve(food)
+                return MassEstimate(
+                    grams=dv.volume_cm3 * density,
+                    method=f"volumetric_depth:{density_source.value}",
+                    density_used=density,
+                    volume_cm3=dv.volume_cm3,
+                    calibration_source="depth_plane",
+                    calibration_confidence=dv.coverage,
+                )
+        # 2. Scalar volumetric when calibration is confident and not too oblique.
         scale = ctx.scale
         threshold = ctx.config.calibration_confidence_threshold
         if scale is not None and scale.confidence >= threshold and _tilt_trustworthy(scale.tilt_deg):
             return self._volumetric.estimate(detection, food, ctx)
-        # Not trustworthy enough (low confidence or too oblique) — fall back and mark it.
+        # 3. Not trustworthy enough (low confidence or too oblique) — fall back and mark it.
         base = self._pixel_ratio.estimate(detection, food, ctx)
         return MassEstimate(
             grams=base.grams,

@@ -183,3 +183,10 @@ class DepthVolumeEngineService:
         return DepthVolumeResult(
             volume_cm3=volume_cm3, coverage=coverage, plane_residual_mm=plane_residual
         )
+
+    def integrate_sample(self, sample, params: DepthVolumeParams | None = None) -> DepthVolumeResult | None:
+        """Convenience over a :class:`DepthSample` (mirrors the Swift overload)."""
+        return self.integrate(
+            sample.depth_mm, sample.mask, sample.width, sample.height,
+            sample.fx, sample.fy, sample.cx, sample.cy, params,
+        )

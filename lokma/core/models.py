@@ -110,6 +110,23 @@ class FoodRecord:
 
 
 @dataclass(frozen=True)
+class DepthSample:
+    """Co-registered depth + mask arrays in depth-map pixel space + that grid's
+    intrinsics — the input to :class:`DepthVolumeEngineService`. Row-major lists of
+    length ``width*height``; depth <= 0 marks an invalid pixel. Mirrors Swift
+    ``DepthSample``."""
+
+    depth_mm: list[float]
+    mask: list[float]
+    width: int
+    height: int
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+
+
+@dataclass(frozen=True)
 class Detection:
     """One segmented food instance from the YOLO model.
 
@@ -126,6 +143,7 @@ class Detection:
     mask_area_px: float                       # at working (640²) grid — pixel_ratio parity
     mask_area_px_frame: float = 0.0           # at native frame grid — volumetric/scale
     frame_size: tuple[int, int] = (0, 0)      # (W, H) of the source frame
+    depth_sample: "DepthSample | None" = None  # Tier 2 LiDAR depth+mask (optional)
 
 
 @dataclass(frozen=True)

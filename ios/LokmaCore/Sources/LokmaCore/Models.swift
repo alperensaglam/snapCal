@@ -92,6 +92,32 @@ public struct FoodRecord: Sendable, Equatable {
 
 // MARK: - Inference results
 
+/// Co-registered depth + mask arrays in depth-map pixel space, plus that grid's
+/// intrinsics — the input to `DepthVolumeEngine`. Row-major, length width*height;
+/// depth ≤ 0 marks an invalid pixel. Mirrors `core/models.py:DepthSample`.
+public struct DepthSample: Sendable, Equatable {
+    public let depthMm: [Double]
+    public let mask: [Double]
+    public let width: Int
+    public let height: Int
+    public let fx: Double
+    public let fy: Double
+    public let cx: Double
+    public let cy: Double
+
+    public init(depthMm: [Double], mask: [Double], width: Int, height: Int,
+                fx: Double, fy: Double, cx: Double, cy: Double) {
+        self.depthMm = depthMm
+        self.mask = mask
+        self.width = width
+        self.height = height
+        self.fx = fx
+        self.fy = fy
+        self.cx = cx
+        self.cy = cy
+    }
+}
+
 /// One segmented food instance, reduced to the two pixel-area scalars the
 /// estimators consume (mirrors the area fields of `core/models.py:Detection`).
 public struct Detection: Sendable, Equatable {
@@ -102,11 +128,15 @@ public struct Detection: Sendable, Equatable {
     public let maskAreaPx: Double         // working (640²) grid — pixel_ratio parity
     public let maskAreaPxFrame: Double    // native frame grid — volumetric/scale
     public let frameSize: (Int, Int)
+    /// Optional LiDAR depth+mask sample (Tier 2). When present, AutoStrategy prefers
+    /// the measured depth-integrated volume; nil keeps the scalar path (parity default).
+    public let depthSample: DepthSample?
 
     public init(
         classId: Int, className: String, confidence: Double,
         bbox: (Double, Double, Double, Double) = (0, 0, 0, 0),
-        maskAreaPx: Double, maskAreaPxFrame: Double = 0.0, frameSize: (Int, Int) = (0, 0)
+        maskAreaPx: Double, maskAreaPxFrame: Double = 0.0, frameSize: (Int, Int) = (0, 0),
+        depthSample: DepthSample? = nil
     ) {
         self.classId = classId
         self.className = className
@@ -115,12 +145,14 @@ public struct Detection: Sendable, Equatable {
         self.maskAreaPx = maskAreaPx
         self.maskAreaPxFrame = maskAreaPxFrame
         self.frameSize = frameSize
+        self.depthSample = depthSample
     }
 
     public static func == (lhs: Detection, rhs: Detection) -> Bool {
         lhs.classId == rhs.classId && lhs.className == rhs.className
             && lhs.confidence == rhs.confidence && lhs.maskAreaPx == rhs.maskAreaPx
             && lhs.maskAreaPxFrame == rhs.maskAreaPxFrame && lhs.frameSize == rhs.frameSize
+            && lhs.depthSample == rhs.depthSample
     }
 }
 

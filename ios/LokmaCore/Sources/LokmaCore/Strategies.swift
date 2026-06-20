@@ -16,13 +16,16 @@ public struct MassContext {
     public let scale: ScaleEstimate?
     public let volumeEngine: VolumeEngine
     public let densityService: DensityService
+    public let depthEngine: DepthVolumeEngine
     public let config: AppConfig
 
     public init(scale: ScaleEstimate?, volumeEngine: VolumeEngine = VolumeEngine(),
-                densityService: DensityService = DensityService(), config: AppConfig = AppConfig()) {
+                densityService: DensityService = DensityService(),
+                depthEngine: DepthVolumeEngine = DepthVolumeEngine(), config: AppConfig = AppConfig()) {
         self.scale = scale
         self.volumeEngine = volumeEngine
         self.densityService = densityService
+        self.depthEngine = depthEngine
         self.config = config
     }
 }
@@ -83,12 +86,26 @@ public struct AutoStrategy: MassEstimationStrategy {
     }
 
     public func estimate(_ detection: Detection, _ food: FoodRecord, _ ctx: MassContext) throws -> MassEstimate {
+        // 1. Measured LiDAR depth volume — most accurate, and inherently tilt-robust
+        //    (the fitted plane absorbs orientation), so it needs no tilt gate.
+        if let sample = detection.depthSample, let dv = ctx.depthEngine.integrate(sample) {
+            let (density, densitySource) = ctx.densityService.resolve(food)
+            return MassEstimate(
+                grams: dv.volumeCm3 * density,
+                method: "volumetric_depth:\(densitySource.rawValue)",
+                densityUsed: density,
+                volumeCm3: dv.volumeCm3,
+                calibrationSource: "depth_plane",
+                calibrationConfidence: dv.coverage
+            )
+        }
+        // 2. Scalar volumetric when calibration is confident and not too oblique.
         let scale = ctx.scale
         let threshold = ctx.config.calibrationConfidenceThreshold
         if let scale, scale.confidence >= threshold, Self.tiltTrustworthy(scale.tiltDeg) {
             return try volumetric.estimate(detection, food, ctx)
         }
-        // Not trustworthy enough (low confidence or too oblique) — fall back and mark it.
+        // 3. Not trustworthy enough (low confidence or too oblique) — fall back and mark it.
         let base = try pixelRatio.estimate(detection, food, ctx)
         return MassEstimate(
             grams: base.grams,

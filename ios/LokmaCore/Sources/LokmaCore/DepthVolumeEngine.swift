@@ -136,6 +136,12 @@ public struct DepthVolumeEngine: Sendable {
         return DepthVolumeResult(volumeCm3: volumeCm3, coverage: coverage, planeResidualMm: planeResidual)
     }
 
+    /// Convenience over a `DepthSample` (mirrors `integrate_sample` in Python).
+    public func integrate(_ sample: DepthSample, params: DepthVolumeParams = DepthVolumeParams()) -> DepthVolumeResult? {
+        integrate(depthMm: sample.depthMm, mask: sample.mask, width: sample.width, height: sample.height,
+                  fx: sample.fx, fy: sample.fy, cx: sample.cx, cy: sample.cy, params: params)
+    }
+
     // MARK: - deterministic helpers (mirror models in depth_volume_engine.py)
 
     static func median(_ xs: [Double]) -> Double {

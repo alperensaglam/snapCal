@@ -77,3 +77,37 @@ def test_low_coverage_returns_none():
                 depth[v, u] = 0.0  # invalid sentinel
             cnt += 1
     assert _integrate(depth, mask) is None
+
+
+def test_auto_strategy_prefers_depth_volume():
+    from lokma.config import AppConfig
+    from lokma.core.models import DepthSample, Detection, FoodRecord
+    from lokma.density.density_service import DensityService
+    from lokma.geometry.strategies import AutoStrategy, MassContext
+    from lokma.geometry.volume_engine import VolumeEngineService
+
+    depth, mask = _base_flat()
+    sample = DepthSample(
+        depth_mm=depth.flatten().tolist(), mask=mask.flatten().tolist(),
+        width=W, height=H, fx=FX, fy=FY, cx=CX, cy=CY,
+    )
+    food = FoodRecord(
+        class_name="baklava", source="curated", usda_desc=None,
+        calories_per_100g=520.0, protein_per_100g=8.0, fat_per_100g=30.0,
+        carbs_per_100g=55.0, portion_g=150.0, ref_area=50_000.0,
+        density=1.2, geometric_shape="prism",
+    )
+    det = Detection(
+        class_id=0, class_name="baklava", confidence=0.9,
+        mask=np.zeros((4, 4), dtype=np.float32), bbox=(0.0, 0.0, 1.0, 1.0),
+        mask_area_px=60_000.0, mask_area_px_frame=90_000.0, frame_size=(640, 480),
+        depth_sample=sample,
+    )
+    # No ScaleEstimate at all — the depth path is self-calibrated and still wins.
+    ctx = MassContext(scale=None, volume_engine=VolumeEngineService(),
+                      density_service=DensityService(), config=AppConfig())
+    m = AutoStrategy().estimate(det, food, ctx)
+    flat_v = _integrate(*_base_flat()).volume_cm3
+    assert m.method == "volumetric_depth:database"
+    assert abs(m.volume_cm3 - flat_v) < 1e-9
+    assert abs(m.grams - flat_v * 1.2) < 1e-6
