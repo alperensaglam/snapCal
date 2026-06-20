@@ -209,6 +209,45 @@ final class ParityTests: XCTestCase {
         }
     }
 
+    func testDepthVolume() throws {
+        let engine = DepthVolumeEngine()
+        for c in golden.depthVolume {
+            let res = engine.integrate(depthMm: c.depth, mask: c.mask, width: c.width, height: c.height,
+                                       fx: c.fx, fy: c.fy, cx: c.cx, cy: c.cy)
+            if let expectV = c.expectVolumeCm3 {
+                let r = try XCTUnwrap(res, c.name)
+                XCTAssertEqual(r.volumeCm3, expectV, accuracy: max(1e-6, abs(expectV) * 1e-6), c.name)
+                if let cov = c.expectCoverage { XCTAssertEqual(r.coverage, cov, accuracy: 1e-9, c.name) }
+                XCTAssertEqual(r.method, c.expectMethod, c.name)
+            } else {
+                XCTAssertNil(res, c.name)
+            }
+        }
+    }
+
+    // Independent correctness check (not generator-derived): a flat top-down box
+    // must integrate to height × world footprint area.
+    func testDepthVolumeFlatClosedForm() throws {
+        let W = 24, H = 18, fx = 30.0, fy = 30.0, cx = 12.0, cy = 9.0
+        let z0 = 300.0, hBox = 20.0
+        var depth = [Double](repeating: z0, count: W * H)
+        var mask = [Double](repeating: 0, count: W * H)
+        var nBox = 0
+        for v in 6...11 {
+            for u in 8...15 {
+                depth[v * W + u] = z0 - hBox
+                mask[v * W + u] = 1.0
+                nBox += 1
+            }
+        }
+        let res = try XCTUnwrap(DepthVolumeEngine().integrate(
+            depthMm: depth, mask: mask, width: W, height: H, fx: fx, fy: fy, cx: cx, cy: cy))
+        let footprintMm2 = Double(nBox) * (z0 - hBox) * (z0 - hBox) / (fx * fy)
+        let expectedCm3 = hBox * footprintMm2 / 1000.0
+        XCTAssertEqual(res.volumeCm3, expectedCm3, accuracy: 1e-6)
+        XCTAssertEqual(res.coverage, 1.0, accuracy: 1e-12)
+    }
+
     // MARK: - helpers
 
     private func assertOptional(_ got: Double?, _ want: Double?, _ msg: String) {
@@ -251,6 +290,7 @@ private struct Golden: Decodable {
     let calibrationLevels: [CalibrationCase]
     let assumedPlate: [AssumedPlateCase]
     let resolverSelection: [ResolverCase]
+    let depthVolume: [DepthVolumeCase]
 
     struct IntrinsicsCase: Decodable {
         let focalMm, pitchMm: Double
@@ -297,5 +337,13 @@ private struct Golden: Decodable {
     }
     struct ResolverCase: Decodable {
         let scenario, expectSource: String; let expectConfidence, expectMmPerPx: Double
+    }
+    struct DepthVolumeCase: Decodable {
+        let name: String
+        let width, height: Int
+        let fx, fy, cx, cy: Double
+        let depth, mask: [Double]
+        let expectVolumeCm3, expectCoverage: Double?
+        let expectMethod: String?
     }
 }

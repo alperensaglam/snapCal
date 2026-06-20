@@ -46,6 +46,7 @@ from lokma.geometry.strategies import (  # noqa: E402
     PixelRatioStrategy,
     VolumetricStrategy,
 )
+from lokma.geometry.depth_volume_engine import DepthVolumeEngineService  # noqa: E402
 from lokma.geometry.volume_engine import VolumeEngineService
 
 # Default config carries the on-device constants the Swift AppConfig must mirror.
@@ -345,6 +346,78 @@ def resolver_selection() -> list[dict]:
     return cases
 
 
+def depth_volume() -> list[dict]:
+    """Tier 2 depth-integrated volume: synthetic depth+mask scenes (pure numpy).
+
+    A small grid keeps the JSON compact. The Python engine is the reference; Swift
+    must reproduce each `expect_*` within tolerance. Invalid depth uses the 0.0
+    sentinel (JSON has no NaN); the engine treats z<=0 as invalid.
+    """
+    eng = DepthVolumeEngineService()
+    W, H = 24, 18
+    fx = fy = 30.0
+    cx, cy = 12.0, 9.0
+    z0, h_box = 300.0, 20.0
+    box_u = range(8, 16)   # u in [8, 15]
+    box_v = range(6, 12)   # v in [6, 11]
+
+    def base_flat():
+        depth = np.full((H, W), z0, dtype=np.float64)
+        mask = np.zeros((H, W), dtype=np.float64)
+        for v in box_v:
+            for u in box_u:
+                depth[v, u] = z0 - h_box
+                mask[v, u] = 1.0
+        return depth, mask
+
+    cases: list[dict] = []
+
+    def emit(name: str, depth: np.ndarray, mask: np.ndarray) -> None:
+        res = eng.integrate(
+            depth.flatten().tolist(), mask.flatten().tolist(), W, H, fx, fy, cx, cy
+        )
+        cases.append({
+            "name": name, "width": W, "height": H,
+            "fx": fx, "fy": fy, "cx": cx, "cy": cy,
+            "depth": depth.flatten().tolist(),
+            "mask": mask.flatten().tolist(),
+            "expect_volume_cm3": (res.volume_cm3 if res else None),
+            "expect_coverage": (res.coverage if res else None),
+            "expect_method": (res.method if res else None),
+        })
+
+    # 1. Flat top-down plate + box -> V == height x footprint area.
+    d1, m1 = base_flat()
+    emit("flat_topdown", d1, m1)
+
+    # 2. Tilted plate (plane z = z0/(1 - a*(u-cx)/fx)); box offset along the ray.
+    d2, m2 = base_flat()
+    a = 0.2
+    for v in range(H):
+        for u in range(W):
+            zp = z0 / (1.0 - a * (u - cx) / fx)
+            d2[v, u] = zp - h_box if m2[v, u] >= 0.5 else zp
+    emit("tilted_plane", d2, m2)
+
+    # 3. Flat plate with gross ring outliers -> MAD-trim must reject them.
+    d3, m3 = base_flat()
+    for (vv, uu) in [(2, 2), (3, 20), (15, 4), (16, 19)]:
+        d3[vv, uu] = z0 + 120.0
+    emit("ring_outliers", d3, m3)
+
+    # 4. Low coverage: invalidate 4/5 of the food pixels -> engine returns None.
+    d4, m4 = base_flat()
+    cnt = 0
+    for v in box_v:
+        for u in box_u:
+            if cnt % 5 != 0:
+                d4[v, u] = 0.0
+            cnt += 1
+    emit("low_coverage", d4, m4)
+
+    return cases
+
+
 def _first_source():
     from lokma.core.models import CalibrationSource
     return CalibrationSource.DEPTH_INTRINSICS
@@ -385,6 +458,7 @@ def main() -> None:
         "calibration_levels": calibration_levels(),
         "assumed_plate": assumed_plate(),
         "resolver_selection": resolver_selection(),
+        "depth_volume": depth_volume(),
     }
 
     out = (
