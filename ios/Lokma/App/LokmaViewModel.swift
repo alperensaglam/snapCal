@@ -128,7 +128,7 @@ extension LokmaViewModel: ARCaptureDelegate {
         }
     }
 
-    public nonisolated func capture(_ controller: ARCaptureController, didProduce pixelBuffer: CVPixelBuffer, context: FrameContext) {
+    public nonisolated func capture(_ controller: ARCaptureController, didProduce pixelBuffer: CVPixelBuffer, context: FrameContext, depth: DepthCapture?) {
         Task { @MainActor in
             guard !busy, let model, let engine else { return }
             busy = true
@@ -137,8 +137,11 @@ extension LokmaViewModel: ARCaptureDelegate {
                 // detections live on; DetectionBuilder reuses that for native-grid area.
                 let prediction = (try? model.predict(pixelBuffer: pixelBuffer))
                     ?? (detections: [RawDetection](), frameSize: (0, 0))
-                let detections = prediction.detections.map {
-                    DetectionBuilder.makeDetection(from: $0, frameSize: prediction.frameSize)
+                // Per detection, resample its mask onto the LiDAR depth grid (Tier 2);
+                // nil depth or a failed sample leaves the scalar path in charge.
+                let detections = prediction.detections.map { raw -> Detection in
+                    let sample = depth.flatMap { DepthSampler.sample(detection: raw, capture: $0) }
+                    return DetectionBuilder.makeDetection(from: raw, frameSize: prediction.frameSize, depthSample: sample)
                 }
                 let (results, scale) = engine.process(detections: detections, context: context)
                 Task { @MainActor in

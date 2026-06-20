@@ -34,8 +34,9 @@ public enum TrackingQuality: Equatable {
 }
 
 public protocol ARCaptureDelegate: AnyObject {
-    /// Called on a background-friendly cadence with one capture + its context.
-    func capture(_ controller: ARCaptureController, didProduce pixelBuffer: CVPixelBuffer, context: FrameContext)
+    /// Called on a background-friendly cadence with one capture + its context, plus
+    /// the optional LiDAR depth bundle the Tier 2 depth path consumes (nil without LiDAR).
+    func capture(_ controller: ARCaptureController, didProduce pixelBuffer: CVPixelBuffer, context: FrameContext, depth: DepthCapture?)
 
     /// Live capture-quality signal (~10 Hz), emitted even when inference is gated
     /// or skipped, so the UI can guide the user. `tiltDeg` is the current top-down
@@ -98,7 +99,24 @@ public final class ARCaptureController: NSObject, ARSessionDelegate {
         guard case .normal = camera.trackingState else { return }
         lastProcessed = frame.timestamp
         let context = makeContext(from: frame)
-        delegate?.capture(self, didProduce: frame.capturedImage, context: context)
+        let depth = makeDepthCapture(from: frame)
+        delegate?.capture(self, didProduce: frame.capturedImage, context: context, depth: depth)
+    }
+
+    /// Bundle the full LiDAR depth field + capture geometry for the Tier 2 depth path.
+    private func makeDepthCapture(from frame: ARFrame) -> DepthCapture? {
+        guard let field = DepthSampler.depthField(from: frame.sceneDepth ?? frame.smoothedSceneDepth) else { return nil }
+        let camera = frame.camera
+        let imageW = Int(camera.imageResolution.width.rounded())
+        let imageH = Int(camera.imageResolution.height.rounded())
+        let intr = camera.intrinsics
+        let geometry = FrameGeometry(
+            imageWidth: imageW, imageHeight: imageH,
+            depthWidth: field.width, depthHeight: field.height,
+            fx: Double(intr.columns.0.x), fy: Double(intr.columns.1.y),
+            cx: Double(intr.columns.2.x), cy: Double(intr.columns.2.y)
+        )
+        return DepthCapture(field: field, geometry: geometry)
     }
 
     // MARK: - ARFrame -> FrameContext

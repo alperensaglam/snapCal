@@ -37,7 +37,8 @@ public struct RawDetection {
 
 public enum DetectionBuilder {
     public static func makeDetection(
-        from raw: RawDetection, frameSize: (Int, Int), config: AppConfig = AppConfig()
+        from raw: RawDetection, frameSize: (Int, Int), config: AppConfig = AppConfig(),
+        depthSample: DepthSample? = nil
     ) -> Detection {
         let threshold = Float(config.maskThreshold)
         let total = max(1, raw.maskWidth * raw.maskHeight)
@@ -56,7 +57,8 @@ public enum DetectionBuilder {
             bbox: raw.bbox,
             maskAreaPx: areaSq,
             maskAreaPxFrame: areaFrame,
-            frameSize: frameSize
+            frameSize: frameSize,
+            depthSample: depthSample
         )
     }
 }
