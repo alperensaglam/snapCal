@@ -46,16 +46,12 @@ class DishLabel:
 def load_depth_mm(path: Path) -> np.ndarray:
     """Load a 16-bit RealSense ``depth_raw.png`` as float millimetres (0 = invalid).
 
-    Nutrition5K mixes two depth encodings — some frames are 1 mm/unit, others
-    0.1 mm/unit (raw values ~10× larger). Normalize by the nonzero median: a
-    food-overhead camera sits ~0.3–0.7 m away, so a median > 1500 means the frame
-    is 0.1 mm-encoded → scale to mm.
+    Authoritative scale from the Nutrition5K docs: "depth units of 10,000
+    (1 meter = 10,000 units)" → 1 unit = 0.1 mm, so depth_mm = raw / 10. A few
+    frames decode to implausibly small distances (e.g. < 100 mm); those are dropped
+    downstream by the depth window in `foreground_mask`.
     """
-    d = np.asarray(Image.open(path), dtype=np.float64)
-    nz = d[d > 0]
-    if nz.size and np.median(nz) > 1500.0:
-        d = d * 0.1
-    return d
+    return np.asarray(Image.open(path), dtype=np.float64) / 10.0
 
 
 def load_masses(csv_path: Path) -> dict[str, float]:
@@ -179,6 +175,10 @@ def build_manifest(cfg: AppConfig | None = None, limit: int | None = None) -> di
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
+    return _manifest_stats(manifest, dropped, out)
+
+
+def _manifest_stats(manifest: list[dict], dropped: dict, out: Path) -> dict:
     fills = np.array([m["fill_density"] for m in manifest], dtype=np.float64)
     stats = {
         "kept": len(manifest),
@@ -192,3 +192,94 @@ def build_manifest(cfg: AppConfig | None = None, limit: int | None = None) -> di
         },
     }
     return stats
+
+
+# --- intrinsic calibration (plate-as-ruler, Phase 7b) -----------------------
+
+
+def plate_diameter_px(mask: np.ndarray) -> tuple[float, float]:
+    """Robust outer (x, y) pixel diameter of a plate/blob region.
+
+    The 90th percentile of per-row x-spans (and per-col y-spans). Unbiased for both
+    a filled disc and an annulus (food-occluded centre): the rim reaches the full
+    width on the centre rows, and the percentile shrugs off a few noisy rows. (A
+    plain coordinate-percentile span under-reads a disc's true diameter ~14%.)
+    """
+    ys, xs = np.nonzero(mask > 0.5)
+    if ys.size == 0:
+        return 0.0, 0.0
+
+    def span(group: np.ndarray, val: np.ndarray) -> float:
+        n = int(group.max()) + 1
+        mn = np.full(n, np.inf); mx = np.full(n, -np.inf)
+        np.minimum.at(mn, group, val); np.maximum.at(mx, group, val)
+        w = (mx - mn)[np.isfinite(mx - mn)]
+        return float(np.percentile(w, 90)) if w.size else 0.0
+
+    return span(ys, xs), span(xs, ys)   # x-diameter (per row), y-diameter (per col)
+
+
+def calibrate_intrinsics(
+    cfg: AppConfig | None = None, *, sample_n: int = 400, target_plate_cm: float | None = None,
+    plate_tol_mm: float = 12.0, min_plate_px: int = 1500,
+) -> dict:
+    """Estimate the RealSense fx, fy from the plate as a physical ruler.
+
+    Overhead, plate ≈ fronto-parallel at depth ``z``: a disc of known diameter
+    ``D_real`` projects to ``d_px = f·D_real/z``, so ``f = d_px·z/D_real``. We take
+    the plate level as the *central-region* median depth (the wide tray/table sits at
+    the deepest level and would over-read), then measure the flat region's diameter.
+
+    CAVEAT (documented honestly): this dataset does not permit a clean plate solve —
+    simple depth thresholding can't isolate the round plate from the food blob it
+    bears (under-reads → fx low) nor from the tray (over-reads → fx high). Empirically
+    the estimate **brackets** fx ~400–940 depending on the level chosen; the D415
+    nominal (~595–600, our seed) sits in between. So treat the output as a sanity
+    bracket, NOT a value to bake blindly — absolute scale is better fixed by an
+    on-device calibration constant against weighed references (Phase 8).
+    """
+    cfg = cfg or AppConfig()
+    target_mm = (target_plate_cm or cfg.default_plate_diameter_cm) * 10.0
+    overhead = cfg.nutrition5k_dir / "imagery" / "realsense_overhead"
+    fxs, fys, zs, dxs, dys = [], [], [], [], []
+    n = 0
+    for dish in sorted(d for d in overhead.iterdir() if d.is_dir()):
+        dp = dish / "depth_raw.png"
+        if not dp.exists():
+            continue
+        try:
+            depth = load_depth_mm(dp)
+        except Exception:
+            continue
+        h, w = depth.shape
+        central = np.zeros((h, w), dtype=bool)
+        central[int(h * 0.2):int(h * 0.8), int(w * 0.2):int(w * 0.8)] = True
+        valid = central & (depth > cfg.n5k_depth_lo_mm) & (depth < cfg.n5k_depth_hi_mm)
+        if int(valid.sum()) < 3000:
+            continue
+        z_plate = float(np.median(depth[valid]))   # central level avoids the wide tray
+        plate = valid & (np.abs(depth - z_plate) < plate_tol_mm)
+        if int(plate.sum()) < min_plate_px:
+            continue
+        dx, dy = plate_diameter_px(plate.astype(np.float64))
+        if dx <= 0 or dy <= 0:
+            continue
+        fxs.append(dx * z_plate / target_mm)
+        fys.append(dy * z_plate / target_mm)
+        zs.append(z_plate); dxs.append(dx); dys.append(dy)
+        n += 1
+        if n >= sample_n:
+            break
+    if not fxs:
+        raise RuntimeError("calibration found no usable plates — check data paths / depth window")
+    fx, fy = float(np.median(fxs)), float(np.median(fys))
+    return {
+        "n_dishes": n,
+        "fx": fx, "fy": fy,
+        "old_fx": cfg.n5k_fx, "old_fy": cfg.n5k_fy,
+        "scale_x": fx / cfg.n5k_fx, "scale_y": fy / cfg.n5k_fy,
+        "plate_real_cm": target_mm / 10.0,
+        "plate_diam_px_x_med": float(np.median(dxs)),
+        "plate_diam_px_y_med": float(np.median(dys)),
+        "plate_z_med_mm": float(np.median(zs)),
+    }

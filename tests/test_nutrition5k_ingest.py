@@ -52,6 +52,27 @@ def test_label_volume_matches_engine_and_fill_density():
     assert label.coverage == 1.0
 
 
+def test_plate_diameter_and_intrinsic_solve():
+    from lokma.training.nutrition5k import plate_diameter_px
+
+    H2, W2, r, cyc, cxc = 200, 200, 60, 100, 100
+    yy, xx = np.ogrid[:H2, :W2]
+    disc = ((yy - cyc) ** 2 + (xx - cxc) ** 2 <= r * r).astype(np.float64)
+    dx, dy = plate_diameter_px(disc)
+    assert abs(dx - 2 * r) <= 3 and abs(dy - 2 * r) <= 3          # outer diameter ~120 px
+
+    # Annulus (food-occluded centre) — outer diameter still recovered.
+    annulus = disc.copy()
+    annulus[(yy - cyc) ** 2 + (xx - cxc) ** 2 <= (r // 2) ** 2] = 0.0
+    ax, ay = plate_diameter_px(annulus)
+    assert abs(ax - 2 * r) <= 3 and abs(ay - 2 * r) <= 3
+
+    # fx solve recovers the planted focal length within ~3%.
+    z, d_real_mm = 400.0, 270.0
+    fx_true = (2 * r) * z / d_real_mm
+    assert abs(dx * z / d_real_mm - fx_true) / fx_true < 0.03
+
+
 def test_qc_rejects_zero_mass_and_implausible_density():
     depth = _scene()
     assert label_dish(depth, 0.0, CFG) == (None, None)         # no mass
