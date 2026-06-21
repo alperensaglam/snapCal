@@ -73,6 +73,31 @@ class AppConfig:
     #: Default extrusion height for volume priors (cm).
     default_height_cm: float = 2.5
 
+    # --- Phase 7: Nutrition5K auto-label + fill-density head -----------------
+    #: Processed workspace for derived foreground masks + the training manifest.
+    n5k_processed_dir: Path = PROJECT_ROOT / "data" / "processed" / "nutrition5k"
+    #: Overhead Intel RealSense depth intrinsics (640x480). Nutrition5K ships none,
+    #: so these are TUNABLE — validate via the ingest's fill-density distribution
+    #: (a constant ~k× offset in D means fx*fy needs scaling).
+    n5k_fx: float = 595.0
+    n5k_fy: float = 595.0
+    n5k_cx: float = 320.0
+    n5k_cy: float = 240.0
+    #: Food = depth-foreground rising above the PLATE surface by this margin (mm).
+    n5k_height_threshold_mm: float = 8.0
+    #: Foreground (food vs plate/tray) extraction tuning.
+    n5k_center_frac: float = 0.6         # central region kept (drop tray edges)
+    n5k_plate_percentile: float = 75.0   # plate surface depth within the central region
+    n5k_depth_lo_mm: float = 100.0       # valid depth window: drop sensor dropouts...
+    n5k_depth_hi_mm: float = 1500.0      # ...and far background after scale-normalization
+    #: QC band: keep dishes whose derived fill-density M/V (g/cm³) is plausible.
+    n5k_fill_density_min: float = 0.1
+    n5k_fill_density_max: float = 2.0
+    #: Fill-density regressor training.
+    fill_head_epochs: int = 40
+    fill_head_batch: int = 32
+    fill_head_lr: float = 1e-3
+
     # --- Knowledge-base build parameters ------------------------------------
     semantic_match_threshold: float = 0.65
     sentence_model_name: str = "all-MiniLM-L6-v2"
