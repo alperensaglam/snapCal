@@ -144,3 +144,40 @@ def test_porosity_resolution_fallback_and_override():
     m = AutoStrategy().estimate(det, food, ctx)
     flat_v = _integrate(*_base_flat()).volume_cm3
     assert abs(m.grams - flat_v * 1.2 * 0.70) < 1e-6   # predicted 0.30 overrides category 0.05
+
+
+def test_fill_density_head_and_calibration_constant():
+    from dataclasses import replace
+
+    from lokma.config import AppConfig
+    from lokma.core.models import DepthSample, Detection, FoodRecord
+    from lokma.density.density_service import DensityService
+    from lokma.geometry.strategies import AutoStrategy, MassContext
+    from lokma.geometry.volume_engine import VolumeEngineService
+
+    depth, mask = _base_flat()
+    sample = DepthSample(depth_mm=depth.flatten().tolist(), mask=mask.flatten().tolist(),
+                         width=W, height=H, fx=FX, fy=FY, cx=CX, cy=CY)
+    food = FoodRecord(class_name="baklava", source="curated", usda_desc=None,
+                      calories_per_100g=520.0, protein_per_100g=8.0, fat_per_100g=30.0,
+                      carbs_per_100g=55.0, portion_g=150.0, ref_area=50_000.0,
+                      density=1.2, geometric_shape="prism")
+    flat_v = _integrate(*_base_flat()).volume_cm3
+
+    def run(fill, k):
+        det = Detection(class_id=0, class_name="baklava", confidence=0.9,
+                        mask=np.zeros((4, 4), dtype=np.float32), bbox=(0.0, 0.0, 1.0, 1.0),
+                        mask_area_px=60_000.0, mask_area_px_frame=90_000.0, frame_size=(640, 480),
+                        depth_sample=sample, predicted_fill_density=fill)
+        ctx = MassContext(scale=None, volume_engine=VolumeEngineService(), density_service=DensityService(),
+                          config=replace(AppConfig(), mass_calibration_constant=k))
+        return AutoStrategy().estimate(det, food, ctx)
+
+    # ML fill-density head: mass = V·D, method ":fill" (overrides ρ·(1−P)).
+    m = run(0.55, 1.0)
+    assert m.method == "volumetric_depth:fill"
+    assert abs(m.grams - flat_v * 0.55) < 1e-6
+    # Global calibration constant scales the volumetric grams.
+    assert abs(run(0.55, 1.2).grams - flat_v * 0.55 * 1.2) < 1e-6
+    # And it also scales the porosity path (no fill): baklava ρ=1.2, P=0.05.
+    assert abs(run(None, 1.2).grams - flat_v * 1.2 * 0.95 * 1.2) < 1e-6

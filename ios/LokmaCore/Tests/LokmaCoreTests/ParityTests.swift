@@ -240,8 +240,10 @@ final class ParityTests: XCTestCase {
             let det = Detection(classId: 0, className: c.className, confidence: 0.9,
                                 maskAreaPx: 60_000.0, maskAreaPxFrame: 90_000.0,
                                 frameSize: (640, 480), depthSample: sample,
-                                predictedPorosity: c.predictedPorosity)
-            let m = try strategy.estimate(det, food, MassContext(scale: nil))
+                                predictedPorosity: c.predictedPorosity,
+                                predictedFillDensity: c.predictedFillDensity)
+            var config = AppConfig(); config.massCalibrationConstant = c.massCalibration
+            let m = try strategy.estimate(det, food, MassContext(scale: nil, config: config))
             XCTAssertEqual(m.grams, c.expectGrams, accuracy: max(1e-6, abs(c.expectGrams) * 1e-6))
             XCTAssertEqual(m.volumeCm3!, c.expectVolumeCm3, accuracy: 1e-6)
             XCTAssertEqual(m.method, c.expectMethod)
@@ -379,6 +381,8 @@ private struct Golden: Decodable {
         let className: String
         let dbDensity: Double?
         let predictedPorosity: Double?
+        let predictedFillDensity: Double?
+        let massCalibration: Double
         let expectGrams, expectVolumeCm3: Double
         let expectMethod: String
     }

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -445,20 +446,28 @@ def auto_depth() -> list[dict]:
         width=W, height=H, fx=fx, fy=fy, cx=cx, cy=cy,
     )
     food = _food(class_name="baklava", density=1.2, ref_area=50_000.0, portion_g=150.0)
-    # predicted=None -> category fallback (baklava=syrup_pastry, P=0.05); predicted=0.30 overrides.
+    # (predicted_porosity, predicted_fill_density, mass_calibration):
+    #   None/None/1.0 -> category porosity fallback (baklava syrup_pastry P=0.05)
+    #   0.30/None/1.0 -> predicted porosity overrides the category
+    #   None/0.55/1.0 -> Phase-8 ML fill-density head: mass = V·D, method ":fill"
+    #   None/0.55/1.2 -> fill path + global calibration constant
+    specs = [(None, None, 1.0), (0.30, None, 1.0), (None, 0.55, 1.0), (None, 0.55, 1.2)]
     cases = []
-    for predicted in (None, 0.30):
+    for por, fill, k in specs:
         det = Detection(
             class_id=0, class_name="baklava", confidence=0.9,
             mask=np.zeros((4, 4), dtype=np.float32), bbox=(0.0, 0.0, 1.0, 1.0),
             mask_area_px=60_000.0, mask_area_px_frame=90_000.0, frame_size=(640, 480),
-            depth_sample=sample, predicted_porosity=predicted,
+            depth_sample=sample, predicted_porosity=por, predicted_fill_density=fill,
         )
-        m = auto.estimate(det, food, _ctx(None))
+        ctx = _ctx(None) if k == 1.0 else MassContext(
+            scale=None, volume_engine=VOL, density_service=DENS, config=replace(CFG, mass_calibration_constant=k))
+        m = auto.estimate(det, food, ctx)
         cases.append({
             "width": W, "height": H, "fx": fx, "fy": fy, "cx": cx, "cy": cy,
             "depth": sample.depth_mm, "mask": sample.mask,
-            "class_name": "baklava", "db_density": 1.2, "predicted_porosity": predicted,
+            "class_name": "baklava", "db_density": 1.2,
+            "predicted_porosity": por, "predicted_fill_density": fill, "mass_calibration": k,
             "expect_grams": m.grams, "expect_volume_cm3": m.volume_cm3, "expect_method": m.method,
         })
     return cases

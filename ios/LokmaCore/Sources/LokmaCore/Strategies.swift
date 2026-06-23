@@ -57,15 +57,14 @@ public struct VolumetricStrategy: MassEstimationStrategy {
         // 0.0 is falsy in Python, so fall back to the working-grid area.
         let areaPx = detection.maskAreaPxFrame != 0 ? detection.maskAreaPxFrame : detection.maskAreaPx
         let realAreaCm2 = scale.areaPxToCm2(areaPx)
-        let (density, densitySource) = ctx.densityService.resolve(food)
         let shape = food.geometricShape ?? "prism"
         let heightCm = Categories.heightFor(food.className)
         let volume = ctx.volumeEngine.estimateVolume(realAreaCm2: realAreaCm2, shape: shape, heightCm: heightCm)
-        let grams = volume.volumeCm3 * density * (1.0 - effectivePorosity(detection, food))
+        let m = volumetricGrams(detection, food, volume.volumeCm3, ctx)
         return MassEstimate(
-            grams: grams,
-            method: "\(name):\(densitySource.rawValue)",
-            densityUsed: density,
+            grams: m.grams,
+            method: "\(name):\(m.methodTag)",
+            densityUsed: m.densityUsed,
             volumeCm3: volume.volumeCm3,
             calibrationSource: scale.source.rawValue,
             calibrationConfidence: scale.confidence
@@ -89,11 +88,11 @@ public struct AutoStrategy: MassEstimationStrategy {
         // 1. Measured LiDAR depth volume — most accurate, and inherently tilt-robust
         //    (the fitted plane absorbs orientation), so it needs no tilt gate.
         if let sample = detection.depthSample, let dv = ctx.depthEngine.integrate(sample) {
-            let (density, densitySource) = ctx.densityService.resolve(food)
+            let m = volumetricGrams(detection, food, dv.volumeCm3, ctx)
             return MassEstimate(
-                grams: dv.volumeCm3 * density * (1.0 - effectivePorosity(detection, food)),
-                method: "volumetric_depth:\(densitySource.rawValue)",
-                densityUsed: density,
+                grams: m.grams,
+                method: "volumetric_depth:\(m.methodTag)",
+                densityUsed: m.densityUsed,
                 volumeCm3: dv.volumeCm3,
                 calibrationSource: "depth_plane",
                 calibrationConfidence: dv.coverage
@@ -123,6 +122,21 @@ public struct AutoStrategy: MassEstimationStrategy {
 /// DensityService resolution hierarchy). `Mass = V · ρ · (1 − P)`.
 public func effectivePorosity(_ detection: Detection, _ food: FoodRecord) -> Double {
     detection.predictedPorosity ?? Categories.porosityFor(food.className)
+}
+
+/// Convert a volume (cm³) to grams for the volumetric paths. Prefers the Phase-8 ML
+/// fill-density head (`mass = V·D`, where D already folds ρ and porosity) when present,
+/// else the analytic `mass = V·ρ·(1−P)`. The global calibration constant (default 1.0)
+/// corrects the absolute V→mass scale for the device's real intrinsics.
+public func volumetricGrams(_ detection: Detection, _ food: FoodRecord, _ volumeCm3: Double,
+                            _ ctx: MassContext) -> (grams: Double, densityUsed: Double, methodTag: String) {
+    let k = ctx.config.massCalibrationConstant
+    if let d = detection.predictedFillDensity {
+        return (k * volumeCm3 * d, d, "fill")
+    }
+    let (density, source) = ctx.densityService.resolve(food)
+    let grams = k * volumeCm3 * density * (1.0 - effectivePorosity(detection, food))
+    return (grams, density, source.rawValue)
 }
 
 public func makeStrategy(_ name: String) throws -> MassEstimationStrategy {

@@ -107,6 +107,8 @@ class AppConfig:
     default_plate_diameter_cm: float = 27.0
     #: Volumetric activates only when calibration confidence >= this (safe activation).
     calibration_confidence_threshold: float = 0.5
+    #: Global V->mass scale, fit on-device against weighed references (Phase 8). 1.0 = no-op.
+    mass_calibration_constant: float = 1.0
     #: PlateEllipseDetector tuning.
     plate_canny_low: int = 50
     plate_canny_high: int = 150

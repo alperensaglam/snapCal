@@ -67,6 +67,20 @@ def _effective_porosity(detection, food) -> float:
     return porosity_for(food.class_name)
 
 
+def _volumetric_grams(detection, food, volume_cm3, ctx):
+    """V (cm³) -> (grams, density_used, method_tag) for the volumetric paths. Prefers the
+    Phase-8 ML fill-density head (``mass = V·D``, D folds ρ and porosity) when present,
+    else the analytic ``mass = V·ρ·(1−P)``. The global calibration constant (default 1.0)
+    corrects the absolute V→mass scale for the device's real intrinsics."""
+    k = ctx.config.mass_calibration_constant
+    if detection.predicted_fill_density is not None:
+        d = detection.predicted_fill_density
+        return k * volume_cm3 * d, d, "fill"
+    density, source = ctx.density_service.resolve(food)
+    grams = k * volume_cm3 * density * (1.0 - _effective_porosity(detection, food))
+    return grams, density, source.value
+
+
 class VolumetricStrategy(MassEstimationStrategy):
     """Physical path: metric footprint area → volume → mass via ``m = V·ρ·(1−P)``."""
 
@@ -78,15 +92,14 @@ class VolumetricStrategy(MassEstimationStrategy):
         # Native-frame area (square pixels) keeps the metric scaling correct.
         area_px = detection.mask_area_px_frame or detection.mask_area_px
         real_area_cm2 = ctx.scale.area_px_to_cm2(area_px)
-        density, density_source = ctx.density_service.resolve(food)
         shape = food.geometric_shape or "prism"
         height_cm = height_for(food.class_name)
         volume = ctx.volume_engine.estimate_volume(real_area_cm2, shape, height_cm)
-        grams = volume.volume_cm3 * density * (1.0 - _effective_porosity(detection, food))
+        grams, density_used, tag = _volumetric_grams(detection, food, volume.volume_cm3, ctx)
         return MassEstimate(
             grams=grams,
-            method=f"{self.name}:{density_source.value}",
-            density_used=density,
+            method=f"{self.name}:{tag}",
+            density_used=density_used,
             volume_cm3=volume.volume_cm3,
             calibration_source=ctx.scale.source.value,
             calibration_confidence=ctx.scale.confidence,
@@ -113,11 +126,11 @@ class AutoStrategy(MassEstimationStrategy):
         if detection.depth_sample is not None:
             dv = ctx.depth_engine.integrate_sample(detection.depth_sample)
             if dv is not None:
-                density, density_source = ctx.density_service.resolve(food)
+                grams, density_used, tag = _volumetric_grams(detection, food, dv.volume_cm3, ctx)
                 return MassEstimate(
-                    grams=dv.volume_cm3 * density * (1.0 - _effective_porosity(detection, food)),
-                    method=f"volumetric_depth:{density_source.value}",
-                    density_used=density,
+                    grams=grams,
+                    method=f"volumetric_depth:{tag}",
+                    density_used=density_used,
                     volume_cm3=dv.volume_cm3,
                     calibration_source="depth_plane",
                     calibration_confidence=dv.coverage,

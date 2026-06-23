@@ -155,12 +155,16 @@ public struct Detection: Sendable, Equatable {
     public let depthSample: DepthSample?
     /// Phase 5 hybrid porosity: per-instance ML-predicted P (future); nil → category fallback.
     public let predictedPorosity: Double?
+    /// Phase 8: per-instance ML-predicted fill-density D = ρ·(1−P) (the trained head's
+    /// output). When present, mass = V·D overrides the analytic ρ·(1−P); nil → that path.
+    public let predictedFillDensity: Double?
 
     public init(
         classId: Int, className: String, confidence: Double,
         bbox: (Double, Double, Double, Double) = (0, 0, 0, 0),
         maskAreaPx: Double, maskAreaPxFrame: Double = 0.0, frameSize: (Int, Int) = (0, 0),
-        depthSample: DepthSample? = nil, predictedPorosity: Double? = nil
+        depthSample: DepthSample? = nil, predictedPorosity: Double? = nil,
+        predictedFillDensity: Double? = nil
     ) {
         self.classId = classId
         self.className = className
@@ -171,6 +175,7 @@ public struct Detection: Sendable, Equatable {
         self.frameSize = frameSize
         self.depthSample = depthSample
         self.predictedPorosity = predictedPorosity
+        self.predictedFillDensity = predictedFillDensity
     }
 
     public static func == (lhs: Detection, rhs: Detection) -> Bool {
@@ -178,6 +183,7 @@ public struct Detection: Sendable, Equatable {
             && lhs.confidence == rhs.confidence && lhs.maskAreaPx == rhs.maskAreaPx
             && lhs.maskAreaPxFrame == rhs.maskAreaPxFrame && lhs.frameSize == rhs.frameSize
             && lhs.depthSample == rhs.depthSample && lhs.predictedPorosity == rhs.predictedPorosity
+            && lhs.predictedFillDensity == rhs.predictedFillDensity
     }
 }
 

@@ -26,6 +26,9 @@ public struct AppConfig: Sendable {
     public var assumeDefaultPlate: Bool = true
     public var assumedPlateFrameFraction: Double = 0.70
 
+    // Global V→mass scale, fit on-device against weighed references (Phase 8). 1.0 = no-op.
+    public var massCalibrationConstant: Double = 1.0
+
     // Active visual model version (keys the bundled DB's class_map).
     public var modelVersion: String = "foodyolo_v1"
 
