@@ -27,12 +27,13 @@ from torch.utils.data import DataLoader, Dataset, random_split
 from lokma.config import AppConfig
 
 _N_SCALARS = 3  # [log1p(volume_cm3), coverage, mask_area_fraction]
+IMG_SIZE = 96   # masked-crop side the head + CoreML export + on-device extraction share
 
 
 class FillDensityDataset(Dataset):
     """Reads dataset_manifest.json → (masked RGB crop, scalars, fill_density target)."""
 
-    def __init__(self, manifest_path: Path, img_size: int = 96, limit: int | None = None):
+    def __init__(self, manifest_path: Path, img_size: int = IMG_SIZE, limit: int | None = None):
         rows = json.loads(Path(manifest_path).read_text())
         self.rows = rows[:limit] if limit else rows
         self.img_size = img_size
