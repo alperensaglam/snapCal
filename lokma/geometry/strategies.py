@@ -135,6 +135,21 @@ class AutoStrategy(MassEstimationStrategy):
                     calibration_source="depth_plane",
                     calibration_confidence=dv.coverage,
                 )
+        # 1b. ML-predicted volume (LiDAR-less fallback): no measured depth, but the RGB
+        #     volume head gives V directly in cm³, so treat it like a self-calibrated
+        #     measured volume (no ScaleEstimate needed). mass = V_pred·D_pred when the
+        #     fill head also fired, else analytic V·ρ·(1−P).
+        if detection.depth_sample is None and detection.predicted_volume_cm3 is not None:
+            grams, density_used, tag = _volumetric_grams(
+                detection, food, detection.predicted_volume_cm3, ctx)
+            return MassEstimate(
+                grams=grams,
+                method=f"volumetric_ml:{tag}",
+                density_used=density_used,
+                volume_cm3=detection.predicted_volume_cm3,
+                calibration_source="ml_volume",
+                calibration_confidence=None,
+            )
         # 2. Scalar volumetric when calibration is confident and not too oblique.
         scale = ctx.scale
         threshold = ctx.config.calibration_confidence_threshold

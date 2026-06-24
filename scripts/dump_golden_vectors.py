@@ -491,6 +491,41 @@ def _first_source():
 # --- main -------------------------------------------------------------------
 
 
+def ml_volume() -> list[dict]:
+    """AutoStrategy ML-volume branch (LiDAR-less): no `depth_sample`, but a
+    `predicted_volume_cm3` from the RGB volume head -> `volumetric_ml`. Locks the
+    same V->grams glue as the depth branch (fill head vs analytic ρ·(1−P), the
+    global calibration constant, and predicted-porosity override) across the boundary.
+    """
+    auto = AutoStrategy()
+    food = _food(class_name="baklava", density=1.2, ref_area=50_000.0, portion_g=150.0)
+    vp = 200.0  # predicted volume (cm³)
+    # (predicted_porosity, predicted_fill_density, mass_calibration):
+    #   None/None/1.0 -> category porosity fallback (baklava syrup_pastry P=0.05)
+    #   0.30/None/1.0 -> predicted porosity overrides the category
+    #   None/0.55/1.0 -> fill head: mass = V·D, method ":fill"
+    #   None/0.55/1.2 -> fill path + global calibration constant
+    specs = [(None, None, 1.0), (0.30, None, 1.0), (None, 0.55, 1.0), (None, 0.55, 1.2)]
+    cases = []
+    for por, fill, k in specs:
+        det = Detection(
+            class_id=0, class_name="baklava", confidence=0.9,
+            mask=np.zeros((4, 4), dtype=np.float32), bbox=(0.0, 0.0, 1.0, 1.0),
+            mask_area_px=60_000.0, mask_area_px_frame=90_000.0, frame_size=(640, 480),
+            depth_sample=None, predicted_porosity=por, predicted_fill_density=fill,
+            predicted_volume_cm3=vp,
+        )
+        ctx = _ctx(None) if k == 1.0 else MassContext(
+            scale=None, volume_engine=VOL, density_service=DENS, config=replace(CFG, mass_calibration_constant=k))
+        m = auto.estimate(det, food, ctx)
+        cases.append({
+            "predicted_volume_cm3": vp, "class_name": "baklava", "db_density": 1.2,
+            "predicted_porosity": por, "predicted_fill_density": fill, "mass_calibration": k,
+            "expect_grams": m.grams, "expect_volume_cm3": m.volume_cm3, "expect_method": m.method,
+        })
+    return cases
+
+
 def main() -> None:
     payload = {
         "_meta": {
@@ -526,6 +561,7 @@ def main() -> None:
         "resolver_selection": resolver_selection(),
         "depth_volume": depth_volume(),
         "auto_depth": auto_depth(),
+        "ml_volume": ml_volume(),
     }
 
     out = (

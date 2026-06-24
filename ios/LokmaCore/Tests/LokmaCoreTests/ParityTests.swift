@@ -250,6 +250,25 @@ final class ParityTests: XCTestCase {
         }
     }
 
+    func testMLVolume() throws {
+        let strategy = AutoStrategy()
+        for c in golden.mlVolume {
+            let food = makeFood(className: c.className, density: c.dbDensity)
+            // LiDAR-less: no depthSample, but a predicted volume from the RGB head.
+            let det = Detection(classId: 0, className: c.className, confidence: 0.9,
+                                maskAreaPx: 60_000.0, maskAreaPxFrame: 90_000.0,
+                                frameSize: (640, 480), depthSample: nil,
+                                predictedPorosity: c.predictedPorosity,
+                                predictedFillDensity: c.predictedFillDensity,
+                                predictedVolumeCm3: c.predictedVolumeCm3)
+            var config = AppConfig(); config.massCalibrationConstant = c.massCalibration
+            let m = try strategy.estimate(det, food, MassContext(scale: nil, config: config))
+            XCTAssertEqual(m.grams, c.expectGrams, accuracy: max(1e-6, abs(c.expectGrams) * 1e-6))
+            XCTAssertEqual(m.volumeCm3!, c.expectVolumeCm3, accuracy: 1e-6)
+            XCTAssertEqual(m.method, c.expectMethod)
+        }
+    }
+
     // Independent correctness check (not generator-derived): a flat top-down box
     // must integrate to height × world footprint area.
     func testDepthVolumeFlatClosedForm() throws {
@@ -318,6 +337,7 @@ private struct Golden: Decodable {
     let resolverSelection: [ResolverCase]
     let depthVolume: [DepthVolumeCase]
     let autoDepth: [AutoDepthCase]
+    let mlVolume: [MLVolumeCase]
 
     struct IntrinsicsCase: Decodable {
         let focalMm, pitchMm: Double
@@ -378,6 +398,16 @@ private struct Golden: Decodable {
         let width, height: Int
         let fx, fy, cx, cy: Double
         let depth, mask: [Double]
+        let className: String
+        let dbDensity: Double?
+        let predictedPorosity: Double?
+        let predictedFillDensity: Double?
+        let massCalibration: Double
+        let expectGrams, expectVolumeCm3: Double
+        let expectMethod: String
+    }
+    struct MLVolumeCase: Decodable {
+        let predictedVolumeCm3: Double
         let className: String
         let dbDensity: Double?
         let predictedPorosity: Double?

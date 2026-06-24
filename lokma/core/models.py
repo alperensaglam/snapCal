@@ -146,6 +146,7 @@ class Detection:
     depth_sample: "DepthSample | None" = None  # Tier 2 LiDAR depth+mask (optional)
     predicted_porosity: float | None = None    # Phase 5: ML porosity P, else category fallback
     predicted_fill_density: float | None = None  # Phase 8: ML fill-density D=ρ·(1−P); mass=V·D
+    predicted_volume_cm3: float | None = None  # Phase 9: RGB volume head (LiDAR-less); mass=V·D
 
 
 @dataclass(frozen=True)

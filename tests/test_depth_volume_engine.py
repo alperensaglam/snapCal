@@ -193,3 +193,38 @@ def test_fill_density_head_and_calibration_constant():
     assert abs(run(0.55, 1.2).grams - flat_v * 0.55 * 1.2) < 1e-6
     # And it also scales the porosity path (no fill): baklava ρ=1.2, P=0.05.
     assert abs(run(None, 1.2).grams - flat_v * 1.2 * 0.95 * 1.2) < 1e-6
+
+
+def test_ml_volume_fallback():
+    """LiDAR-less path: no depth_sample, but a predicted_volume_cm3 from the RGB head
+    routes through the new AutoStrategy ML tier -> mass = V·D (or analytic ρ·(1−P))."""
+    from lokma.config import AppConfig
+    from lokma.core.models import Detection, FoodRecord
+    from lokma.density.density_service import DensityService
+    from lokma.geometry.strategies import AutoStrategy, MassContext
+    from lokma.geometry.volume_engine import VolumeEngineService
+
+    food = FoodRecord(class_name="baklava", source="curated", usda_desc=None,
+                      calories_per_100g=520.0, protein_per_100g=8.0, fat_per_100g=30.0,
+                      carbs_per_100g=55.0, portion_g=150.0, ref_area=50_000.0,
+                      density=1.2, geometric_shape="prism")
+    ctx = MassContext(scale=None, volume_engine=VolumeEngineService(),
+                      density_service=DensityService(), config=AppConfig())
+    vp = 200.0
+
+    def make(fill=None):
+        return Detection(class_id=0, class_name="baklava", confidence=0.9,
+                         mask=np.zeros((4, 4), dtype=np.float32), bbox=(0.0, 0.0, 1.0, 1.0),
+                         mask_area_px=60_000.0, mask_area_px_frame=90_000.0, frame_size=(640, 480),
+                         depth_sample=None, predicted_fill_density=fill, predicted_volume_cm3=vp)
+
+    # Fill head present (V_pred fed through it on-device) -> mass = V·D.
+    m = AutoStrategy().estimate(make(fill=0.55), food, ctx)
+    assert m.method == "volumetric_ml:fill"
+    assert abs(m.grams - vp * 0.55) < 1e-6
+    assert abs(m.volume_cm3 - vp) < 1e-12
+
+    # No fill head -> analytic ρ·(1−P): baklava ρ=1.2, syrup_pastry P=0.05.
+    m2 = AutoStrategy().estimate(make(), food, ctx)
+    assert m2.method.startswith("volumetric_ml:") and m2.method != "volumetric_ml:fill"
+    assert abs(m2.grams - vp * 1.2 * 0.95) < 1e-6

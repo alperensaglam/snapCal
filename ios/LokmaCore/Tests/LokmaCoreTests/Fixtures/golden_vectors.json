@@ -8378,5 +8378,51 @@
       "expect_volume_cm3": 83.62666666666667,
       "expect_method": "volumetric_depth:fill"
     }
+  ],
+  "ml_volume": [
+    {
+      "predicted_volume_cm3": 200.0,
+      "class_name": "baklava",
+      "db_density": 1.2,
+      "predicted_porosity": null,
+      "predicted_fill_density": null,
+      "mass_calibration": 1.0,
+      "expect_grams": 228.0,
+      "expect_volume_cm3": 200.0,
+      "expect_method": "volumetric_ml:database"
+    },
+    {
+      "predicted_volume_cm3": 200.0,
+      "class_name": "baklava",
+      "db_density": 1.2,
+      "predicted_porosity": 0.3,
+      "predicted_fill_density": null,
+      "mass_calibration": 1.0,
+      "expect_grams": 168.0,
+      "expect_volume_cm3": 200.0,
+      "expect_method": "volumetric_ml:database"
+    },
+    {
+      "predicted_volume_cm3": 200.0,
+      "class_name": "baklava",
+      "db_density": 1.2,
+      "predicted_porosity": null,
+      "predicted_fill_density": 0.55,
+      "mass_calibration": 1.0,
+      "expect_grams": 110.00000000000001,
+      "expect_volume_cm3": 200.0,
+      "expect_method": "volumetric_ml:fill"
+    },
+    {
+      "predicted_volume_cm3": 200.0,
+      "class_name": "baklava",
+      "db_density": 1.2,
+      "predicted_porosity": null,
+      "predicted_fill_density": 0.55,
+      "mass_calibration": 1.2,
+      "expect_grams": 132.0,
+      "expect_volume_cm3": 200.0,
+      "expect_method": "volumetric_ml:fill"
+    }
   ]
 }

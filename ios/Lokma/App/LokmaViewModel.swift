@@ -53,7 +53,10 @@ public final class LokmaViewModel: ObservableObject {
             bootStatus += "Model load failed (export FoodSeg.mlpackage): \(error)."
         }
         if let model, let engine {
-            self.inference = InferenceService(model: model, engine: engine, fillModel: FillDensityModel())
+            // FillDensityModel/VolumeModel are optional heads: nil when not bundled, and the
+            // pipeline degrades gracefully (analytic ρ·(1−P) / scalar fallback respectively).
+            self.inference = InferenceService(model: model, engine: engine,
+                                              fillModel: FillDensityModel(), volumeModel: VolumeModel())
         } else {
             self.inference = nil
         }

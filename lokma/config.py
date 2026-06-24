@@ -97,6 +97,10 @@ class AppConfig:
     fill_head_epochs: int = 40
     fill_head_batch: int = 32
     fill_head_lr: float = 1e-3
+    #: Phase 9: non-LiDAR volume regressor training (RGB → log1p(volume_cm3)).
+    volume_head_epochs: int = 40
+    volume_head_batch: int = 32
+    volume_head_lr: float = 1e-3
 
     # --- Knowledge-base build parameters ------------------------------------
     semantic_match_threshold: float = 0.65

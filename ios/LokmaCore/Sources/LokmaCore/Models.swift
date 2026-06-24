@@ -158,13 +158,17 @@ public struct Detection: Sendable, Equatable {
     /// Phase 8: per-instance ML-predicted fill-density D = ρ·(1−P) (the trained head's
     /// output). When present, mass = V·D overrides the analytic ρ·(1−P); nil → that path.
     public let predictedFillDensity: Double?
+    /// Phase 9: per-instance ML-predicted volume (cm³) from the RGB volume head, used on
+    /// LiDAR-less devices when no depthSample exists. When present (and depthSample nil),
+    /// AutoStrategy treats it like a measured volume; nil → scalar/pixel-ratio fallback.
+    public let predictedVolumeCm3: Double?
 
     public init(
         classId: Int, className: String, confidence: Double,
         bbox: (Double, Double, Double, Double) = (0, 0, 0, 0),
         maskAreaPx: Double, maskAreaPxFrame: Double = 0.0, frameSize: (Int, Int) = (0, 0),
         depthSample: DepthSample? = nil, predictedPorosity: Double? = nil,
-        predictedFillDensity: Double? = nil
+        predictedFillDensity: Double? = nil, predictedVolumeCm3: Double? = nil
     ) {
         self.classId = classId
         self.className = className
@@ -176,6 +180,7 @@ public struct Detection: Sendable, Equatable {
         self.depthSample = depthSample
         self.predictedPorosity = predictedPorosity
         self.predictedFillDensity = predictedFillDensity
+        self.predictedVolumeCm3 = predictedVolumeCm3
     }
 
     public static func == (lhs: Detection, rhs: Detection) -> Bool {
@@ -184,6 +189,7 @@ public struct Detection: Sendable, Equatable {
             && lhs.maskAreaPxFrame == rhs.maskAreaPxFrame && lhs.frameSize == rhs.frameSize
             && lhs.depthSample == rhs.depthSample && lhs.predictedPorosity == rhs.predictedPorosity
             && lhs.predictedFillDensity == rhs.predictedFillDensity
+            && lhs.predictedVolumeCm3 == rhs.predictedVolumeCm3
     }
 }
 
