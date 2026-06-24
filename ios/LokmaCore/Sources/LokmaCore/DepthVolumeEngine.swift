@@ -17,6 +17,10 @@ public struct DepthVolumeParams: Sendable {
     public var madK: Double = 3.0
     public var minRingPoints: Int = 30
     public var heightClampMm: Double = 0.0
+    /// Reject the estimate when the median food height above the plane exceeds this —
+    /// a scene with no near support plane (object held over a far wall) would otherwise
+    /// explode V. A plated food's median height is a few cm; 250 mm is a safe ceiling.
+    public var maxFoodHeightMm: Double = 250.0
     public init() {}
 }
 
@@ -118,8 +122,9 @@ public struct DepthVolumeEngine: Sendable {
         let coverage = Double(foodValid) / Double(foodTotal)
         guard coverage >= params.minCoverage else { return nil }
 
-        // Integrate V = (1/(fx·fy)) Σ max(0, z_plane − z) · z².
+        // Integrate V = (1/(fx·fy)) Σ max(0, z_plane − z) · z², collecting food heights.
         var sumTerm = 0.0
+        var heights: [Double] = []
         for v in 0..<height {
             for u in 0..<width {
                 let i = v * width + u
@@ -129,9 +134,14 @@ public struct DepthVolumeEngine: Sendable {
                 let x = (Double(u) - cx) / fx * z
                 let y = (Double(v) - cy) / fy * z
                 let h = (plane.a * x + plane.b * y + plane.c) - z
+                heights.append(max(0.0, h))
                 if h > params.heightClampMm { sumTerm += h * z * z }
             }
         }
+        // Plausibility: real food rises modestly above its plate. With no near support
+        // plane (object over a far wall) the median height is huge → reject so V can't
+        // explode into impossible mass/calories.
+        guard !heights.isEmpty, Self.median(heights) <= params.maxFoodHeightMm else { return nil }
         let volumeCm3 = (sumTerm / (fx * fy)) / 1000.0
         return DepthVolumeResult(volumeCm3: volumeCm3, coverage: coverage, planeResidualMm: planeResidual)
     }

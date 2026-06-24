@@ -422,6 +422,16 @@ def depth_volume() -> list[dict]:
             cnt += 1
     emit("low_coverage", d4, m4)
 
+    # 5. Implausibly tall: no near support plane (object held over a far wall) →
+    #    median food height 350mm > 250mm ceiling → engine returns None.
+    d5 = np.full((H, W), 500.0, dtype=np.float64)
+    m5 = np.zeros((H, W), dtype=np.float64)
+    for v in box_v:
+        for u in box_u:
+            d5[v, u] = 150.0
+            m5[v, u] = 1.0
+    emit("implausible_height", d5, m5)
+
     return cases
 
 

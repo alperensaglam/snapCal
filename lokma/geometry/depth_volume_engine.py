@@ -34,6 +34,8 @@ class DepthVolumeParams:
     mad_k: float = 3.0              # MAD multiplier for ring outlier rejection
     min_ring_points: int = 30       # below this the plane fit isn't trustworthy
     height_clamp_mm: float = 0.0    # ignore surface points at/below this height
+    max_food_height_mm: float = 250.0  # reject if the median food height exceeds this
+    #                                    (no near support plane → V would explode)
 
 
 @dataclass(frozen=True)
@@ -176,8 +178,14 @@ class DepthVolumeEngineService:
         fx_world = (fu.astype(np.float64) - cx) / fx * fz
         fy_world = (fv.astype(np.float64) - cy) / fy * fz
         z_plane = a * fx_world + b * fy_world + c
-        h = z_plane - fz
-        h = np.where(h > p.height_clamp_mm, h, 0.0)
+        h_raw = z_plane - fz
+        # Plausibility: real food rises modestly above its plate. With no near support
+        # plane (object over a far wall) the median height is huge → reject so V can't
+        # explode into impossible mass/calories.
+        heights = np.maximum(0.0, h_raw)
+        if heights.size == 0 or float(np.median(heights)) > p.max_food_height_mm:
+            return None
+        h = np.where(h_raw > p.height_clamp_mm, h_raw, 0.0)
         sum_term = float(np.sum(h * fz * fz))
         volume_cm3 = (sum_term / (fx * fy)) / 1000.0
         return DepthVolumeResult(

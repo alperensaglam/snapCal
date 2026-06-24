@@ -109,6 +109,8 @@ class AppConfig:
     calibration_confidence_threshold: float = 0.5
     #: Global V->mass scale, fit on-device against weighed references (Phase 8). 1.0 = no-op.
     mass_calibration_constant: float = 1.0
+    #: Suppress a detection's mass when it exceeds this (g) — safety cap vs false positives.
+    max_plausible_grams: float = 2500.0
     #: PlateEllipseDetector tuning.
     plate_canny_low: int = 50
     plate_canny_high: int = 150

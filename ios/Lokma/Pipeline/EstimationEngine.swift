@@ -34,6 +34,12 @@ public final class EstimationEngine {
                 annotated.append(AnnotatedResult(detection: detection, food: food))
                 continue
             }
+            // Safety cap: an implausible mass (false positive / runaway V) shows no
+            // calories rather than an impossible number.
+            guard mass.grams <= config.maxPlausibleGrams else {
+                annotated.append(AnnotatedResult(detection: detection, food: food))
+                continue
+            }
             let nutrition = NutritionResult.fromFood(food, grams: mass.grams)
             annotated.append(AnnotatedResult(detection: detection, food: food, mass: mass, nutrition: nutrition))
         }

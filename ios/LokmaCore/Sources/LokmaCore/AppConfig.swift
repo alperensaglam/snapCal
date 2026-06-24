@@ -28,6 +28,9 @@ public struct AppConfig: Sendable {
 
     // Global V→mass scale, fit on-device against weighed references (Phase 8). 1.0 = no-op.
     public var massCalibrationConstant: Double = 1.0
+    /// Suppress a detection's mass when it exceeds this (g) — a safety cap so false
+    /// positives / runaway volumes show no calories instead of an impossible number.
+    public var maxPlausibleGrams: Double = 2500.0
 
     // Active visual model version (keys the bundled DB's class_map).
     public var modelVersion: String = "foodyolo_v1"

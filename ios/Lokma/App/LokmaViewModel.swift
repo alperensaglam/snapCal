@@ -17,17 +17,14 @@ public final class LokmaViewModel: ObservableObject {
     @Published public private(set) var guidance: CaptureGuidance?
 
     public let capture: ARCaptureController
-    private let model: FoodSegModel?
-    private let engine: EstimationEngine?
     private let config = AppConfig()
-    private let inferenceQueue = DispatchQueue(label: "com.lokma.inference", qos: .userInitiated)
+    /// Inference (segmentation + estimation) confined to an actor; nil if the model or
+    /// knowledge base failed to load. Replaces the old DispatchQueue + non-Sendable captures.
+    private let inference: InferenceService?
     /// Per-instance temporal smoothing of displayed grams (presentation stability).
     private let tracker = InstanceTracker()
-    /// Phase 8: depth engine (for the fill-head's V/coverage features) + the fill-density
-    /// head (nil when not bundled → the analytic ρ·(1−P) path is kept).
-    private let depthEngine = DepthVolumeEngine()
-    private let fillModel = FillDensityModel()
-    private var busy = false
+    /// Drop frames while one is in flight (the actor processes one frame at a time).
+    private var inflight = false
 
     // Live capture-quality signals feeding `guidance` (updated from two cadences:
     // tracking/tilt at ~10 Hz, depth-source at the inference rate).
@@ -37,24 +34,29 @@ public final class LokmaViewModel: ObservableObject {
 
     public init() {
         self.capture = ARCaptureController(config: config)
-        var loadedModel: FoodSegModel?
-        var loadedEngine: EstimationEngine?
         var bootStatus = ""
+        var engine: EstimationEngine?
         do {
             let store = try KnowledgeStore()
-            loadedEngine = EstimationEngine(store: store, config: config)
+            engine = EstimationEngine(store: store, config: config)
             bootStatus += "KB \(store.count) foods (\(store.activeModelVersion ?? "?")). "
         } catch {
             bootStatus += "KB load failed: \(error). "
         }
+        var model: FoodSegModel?
         do {
-            loadedModel = try FoodSegModel()
-            bootStatus += "Model \(loadedModel?.metadata.modelVersion ?? "?")."
+            let loaded = try FoodSegModel()
+            loaded.scoreThreshold = config.confThreshold   // B1: confidence floor (single source of truth)
+            model = loaded
+            bootStatus += "Model \(loaded.metadata.modelVersion)."
         } catch {
             bootStatus += "Model load failed (export FoodSeg.mlpackage): \(error)."
         }
-        self.model = loadedModel
-        self.engine = loadedEngine
+        if let model, let engine {
+            self.inference = InferenceService(model: model, engine: engine, fillModel: FillDensityModel())
+        } else {
+            self.inference = nil
+        }
         self.status = bootStatus
         self.capture.delegate = self
     }
@@ -150,42 +152,22 @@ extension LokmaViewModel: ARCaptureDelegate {
     }
 
     public nonisolated func capture(_ controller: ARCaptureController, didProduce pixelBuffer: CVPixelBuffer, context: FrameContext, depth: DepthCapture?) {
+        // Bundle the (non-Sendable) buffer into a Sendable wrapper *before* the Task, so
+        // nothing non-Sendable is captured by the @Sendable Task closure.
+        let input = FrameInput(pixelBuffer: pixelBuffer, context: context, depth: depth)
         Task { @MainActor in
-            guard !busy, let model, let engine else { return }
-            let depthEngine = self.depthEngine
-            let fillModel = self.fillModel
-            busy = true
-            inferenceQueue.async { [weak self] in
-                // predict center-crops to a square and reports the (S, S) frame the
-                // detections live on; DetectionBuilder reuses that for native-grid area.
-                let prediction = (try? model.predict(pixelBuffer: pixelBuffer))
-                    ?? (detections: [RawDetection](), frameSize: (0, 0))
-                // Per detection: resample its mask onto the LiDAR depth grid (Tier 2), and
-                // — when the fill-density head is bundled — predict D from the masked crop +
-                // depth scalars (mass = V·D). nil at any step → the analytic ρ·(1−P) path.
-                let detections = prediction.detections.map { raw -> Detection in
-                    let sample = depth.flatMap { DepthSampler.sample(detection: raw, capture: $0) }
-                    var fill: Double? = nil
-                    if let sample, let dv = depthEngine.integrate(sample) {
-                        fill = fillModel?.predict(capturedImage: pixelBuffer, raw: raw,
-                                                  volumeCm3: dv.volumeCm3, coverage: dv.coverage)
-                    }
-                    return DetectionBuilder.makeDetection(from: raw, frameSize: prediction.frameSize,
-                                                          depthSample: sample, predictedFillDensity: fill)
-                }
-                let (results, scale) = engine.process(detections: detections, context: context)
-                Task { @MainActor in
-                    self?.labels = self?.stabilizedLabels(results, cameraTransform: depth?.cameraTransform) ?? []
-                    self?.calibrationSource = scale?.source.rawValue ?? "none"
-                    self?.calibrationConfidence = scale?.confidence ?? 0
-                    self?.status = results.isEmpty ? "No food detected" : "\(results.count) item(s)"
-                    // Depth is "degraded" whenever the high-confidence LiDAR depth path
-                    // isn't the active calibration source (sparse/lost depth → fallback).
-                    self?.depthDegraded = (scale?.source != .depthIntrinsics)
-                    self?.refreshGuidance()
-                    self?.busy = false
-                }
-            }
+            guard !inflight, let inference else { return }
+            inflight = true
+            let (results, scale) = await inference.process(input)
+            labels = stabilizedLabels(results, cameraTransform: input.depth?.cameraTransform)
+            calibrationSource = scale?.source.rawValue ?? "none"
+            calibrationConfidence = scale?.confidence ?? 0
+            status = results.isEmpty ? "No food detected" : "\(results.count) item(s)"
+            // Depth is "degraded" whenever the high-confidence LiDAR depth path isn't the
+            // active calibration source (sparse/lost depth → fallback).
+            depthDegraded = (scale?.source != .depthIntrinsics)
+            refreshGuidance()
+            inflight = false
         }
     }
 }

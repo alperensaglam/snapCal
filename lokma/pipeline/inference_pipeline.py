@@ -110,6 +110,11 @@ class InferencePipeline:
                 annotated.append(AnnotatedResult(detection=detection))
                 continue
             mass = self.strategy.estimate(detection, food, ctx)
+            # Safety cap: an implausible mass (false positive / runaway V) shows no
+            # calories rather than an impossible number.
+            if mass.grams > self.config.max_plausible_grams:
+                annotated.append(AnnotatedResult(detection=detection, food=food))
+                continue
             nutrition = NutritionResult.from_food(food, mass.grams)
             annotated.append(AnnotatedResult(detection, food, mass, nutrition))
         return annotated

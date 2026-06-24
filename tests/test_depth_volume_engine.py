@@ -79,6 +79,18 @@ def test_low_coverage_returns_none():
     assert _integrate(depth, mask) is None
 
 
+def test_implausible_height_rejected():
+    # Food 350 mm above the plate (no near support plane) → median height > 250 → None.
+    depth = np.full((H, W), 500.0, dtype=np.float64)
+    mask = np.zeros((H, W), dtype=np.float64)
+    for v in BOX_V:
+        for u in BOX_U:
+            depth[v, u] = 150.0
+            mask[v, u] = 1.0
+    assert _integrate(depth, mask) is None
+    assert _integrate(*_base_flat()) is not None   # a normal ~20 mm box still passes
+
+
 def test_auto_strategy_prefers_depth_volume():
     from lokma.config import AppConfig
     from lokma.core.models import DepthSample, Detection, FoodRecord
