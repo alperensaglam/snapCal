@@ -17,8 +17,14 @@ Run in the ML env (torch + coremltools):
     KMP_DUPLICATE_LIB_OK=TRUE python scripts/export_height_head.py --verify
 
 ``--verify`` runs torch vs the converted CoreML model on a random input and asserts
-they agree within 1e-3 — the export's de-risking step. (The on-device *crop*
+they agree within 5e-3 — the export's de-risking step. (The on-device *crop*
 pipeline must separately match the documented preprocessing; validate on device.)
+
+The tolerance is looser than the fill head's 1e-3 by design: the check compares the
+raw ``volume_log1p`` output (before expm1), whose magnitude is ~11.5, so the model's
+fp16 quantization (mlprogram default) shows up as a larger *absolute* delta for the
+*same* relative error (~2e-4). 5e-3 is still below one fp16 ULP at that magnitude
+(~0.008), so a genuinely broken conversion is still caught.
 """
 
 from __future__ import annotations
@@ -40,7 +46,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Export the volume head -> CoreML .mlpackage")
     p.add_argument("--weights", type=Path, default=DEFAULT_WEIGHTS)
     p.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    p.add_argument("--verify", action="store_true", help="assert CoreML matches torch within 1e-3")
+    p.add_argument("--verify", action="store_true", help="assert CoreML matches torch within 5e-3")
     return p.parse_args()
 
 
@@ -107,10 +113,14 @@ def main() -> None:
         ml = mlmodel.predict({"image": pil, "scalars": scalars.numpy().astype(np.float32)})
         ml_out = float(np.asarray(ml["volume_log1p"]).reshape(-1)[0])
         delta = abs(ml_out - torch_out)
+        # Looser than the fill head's 1e-3: volume_log1p magnitude (~11.5) makes fp16
+        # quantization show up as a larger absolute delta for the same relative error
+        # (~2e-4). 5e-3 is still sub-ULP at that magnitude, so it catches real breakage.
+        tol = 5e-3
         print(f"verify: torch={torch_out:.6f}  coreml={ml_out:.6f}  |Δ|={delta:.2e}")
-        if delta > 1e-3:
-            raise SystemExit(f"CoreML/torch mismatch {delta:.2e} > 1e-3 — export is not faithful")
-        print("verify: OK (CoreML matches torch within 1e-3)")
+        if delta > tol:
+            raise SystemExit(f"CoreML/torch mismatch {delta:.2e} > {tol:.0e} — export is not faithful")
+        print(f"verify: OK (CoreML matches torch within {tol:.0e})")
 
     print("\nNext: `cd ios && xcodegen generate` (if needed), then build & run in Xcode.")
 
