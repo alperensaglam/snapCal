@@ -40,6 +40,8 @@ class AppConfig:
     )
     #: Pretrained seg checkpoint used for training / auto-labeling.
     pretrained_seg_model: Path = PROJECT_ROOT / "models" / "pretrained" / "yolo11n-seg.pt"
+    #: Bundled iOS asset dir; the knowledge build auto-deploys lokma_local.db here.
+    ios_resources_dir: Path = PROJECT_ROOT / "ios" / "Lokma" / "Resources"
 
     # --- Data sources (knowledge-base build) --------------------------------
     usda_survey_dir: Path = PROJECT_ROOT / "data" / "raw" / "usda" / "survey"

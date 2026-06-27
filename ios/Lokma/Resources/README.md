@@ -14,8 +14,7 @@ KMP_DUPLICATE_LIB_OK=TRUE python scripts/export_coreml.py            # current v
 KMP_DUPLICATE_LIB_OK=TRUE python scripts/export_coreml.py --pretrained
 ```
 
-To refresh the KB snapshot after rebuilding it:
-
-```bash
-cp data/processed/lokma_local.db ios/Lokma/Resources/lokma_local.db
-```
+Refreshing the KB snapshot is **automatic**: `scripts/build_knowledge_base.py`
+copies the freshly built DB here at the end of the build (pass `--no-deploy` to
+skip). The same auto-deploy runs when the data pipeline's nutrition lane builds
+the KB. No manual `cp` needed.

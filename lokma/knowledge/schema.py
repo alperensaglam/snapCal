@@ -22,6 +22,11 @@ from __future__ import annotations
 
 SCHEMA_VERSION = "3.0"
 
+#: Compiled-content release version, written to ``kb_meta`` as the root provenance
+#: marker (distinct from ``SCHEMA_VERSION``, which tracks table structure). Bump on
+#: a content/compilation change; the table DDL stays at ``SCHEMA_VERSION``.
+DB_VERSION = "1.0.0"
+
 # --- table column constants (authoritative) ---------------------------------
 
 FOOD_COLUMNS = [
@@ -106,7 +111,10 @@ CREATE_INDICES = [
 
 #: Re-exposes the Phase-1/2 FoodRecord shape. ``class_name`` = slug; macros come
 #: from the lowest-priority (preferred) nutrition_facts row; ref_area from the
-#: active model's class_map.
+#: active model's class_map. ``name_en``/``name_tr`` are *additive* localized
+#: display names (from the primary food_alias rows); they are intentionally NOT in
+#: ``NUTRITION_COLUMNS``, so the parity-locked FoodRecord path is unchanged and any
+#: future bilingual consumer can opt in by selecting them explicitly.
 CREATE_NUTRITION_VIEW = """
 CREATE VIEW IF NOT EXISTS nutrition AS
 SELECT
@@ -120,7 +128,11 @@ SELECT
     f.default_portion_g          AS portion_g,
     cm.ref_area                  AS ref_area,
     f.density                    AS density,
-    f.geometric_shape            AS geometric_shape
+    f.geometric_shape            AS geometric_shape,
+    (SELECT text FROM food_alias
+        WHERE food_id = f.food_id AND lang = 'en' AND kind = 'primary' LIMIT 1) AS name_en,
+    (SELECT text FROM food_alias
+        WHERE food_id = f.food_id AND lang = 'tr' AND kind = 'primary' LIMIT 1) AS name_tr
 FROM food f
 LEFT JOIN nutrition_facts nf
     ON nf.food_id = f.food_id

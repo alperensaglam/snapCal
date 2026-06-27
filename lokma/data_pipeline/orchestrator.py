@@ -410,8 +410,9 @@ class Orchestrator:
         from lokma.knowledge.builder import KnowledgeBaseBuilder
 
         # Multi-source name/synonym merging stays the existing EntityResolver +
-        # food_alias + priority machinery — not reimplemented here.
-        return KnowledgeBaseBuilder(self.app).build()
+        # food_alias + priority machinery (now driven by SourcePriorityPolicy).
+        # deploy=True auto-refreshes the bundled ios/Lokma/Resources/lokma_local.db.
+        return KnowledgeBaseBuilder(self.app).build(deploy=True)
 
     def _run_multimodal(self, spec: SourceSpec) -> dict:
         from lokma.training import nutrition5k

@@ -9,7 +9,9 @@ enabling it adds matched USDA ``source_ref``s + ``source_desc`` aliases.
 from __future__ import annotations
 
 import logging
+import shutil
 from datetime import datetime, timezone
+from pathlib import Path
 
 from lokma.config import AppConfig
 from lokma.core.exceptions import KnowledgeBaseBuildError
@@ -17,25 +19,45 @@ from lokma.knowledge.database_manager import DatabaseManager
 from lokma.knowledge.entity_resolver import EntityResolver
 from lokma.knowledge.schema import (
     CLASS_MAP_COLUMNS,
+    DB_VERSION,
     FOOD_ALIAS_COLUMNS,
     FOOD_COLUMNS,
     NUTRITION_FACTS_COLUMNS,
     SCHEMA_VERSION,
 )
+from lokma.knowledge.source_priority import SourcePriorityPolicy
 from lokma.knowledge import taxonomy
 
 logger = logging.getLogger(__name__)
+
+
+def deploy_database(config: AppConfig | None = None) -> Path:
+    """Copy the built SQLite KB into the bundled iOS Resources dir (frictionless deploy).
+
+    Retires the manual ``cp data/processed/lokma_local.db ios/Lokma/Resources/``.
+    The bundled file already exists in the Xcode project, so refreshing its bytes
+    needs no ``xcodegen``. Returns the destination path.
+    """
+    config = config or AppConfig()
+    dest = config.ios_resources_dir / "lokma_local.db"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(config.db_path, dest)
+    logger.info("Deployed KB -> %s", dest)
+    return dest
 
 
 class KnowledgeBaseBuilder:
     def __init__(self, config: AppConfig | None = None) -> None:
         self.config = config or AppConfig()
 
-    def build(self) -> int:
+    def build(self, deploy: bool = False) -> int:
         foods = taxonomy.FOODS
         if not foods:
             raise KnowledgeBaseBuildError("Empty taxonomy")
         logger.info("Building knowledge base: %d foods -> %s", len(foods), self.config.db_path)
+
+        policy = SourcePriorityPolicy()
+        policy.validate(foods)  # fail fast if the curated taxonomy disagrees with the matrix
 
         ref_areas = self._ref_areas(self.config.val_labels_dir)
         resolver = EntityResolver(self.config)
@@ -81,7 +103,12 @@ class KnowledgeBaseBuilder:
 
             resolved = resolver.resolve(food)
             for fact in resolved.facts:
-                fact_rows.append({"food_id": food_id, **fact})
+                # The cultural/raw matrix sets the priority the `nutrition` view
+                # resolves with; non-real (e.g. LLM) facts keep their own priority.
+                fact_rows.append({
+                    "food_id": food_id, **fact,
+                    "priority": policy.priority_for(fact["source"], food, default=fact["priority"]),
+                })
             for lang, text in resolved.source_aliases:
                 add_alias(food_id, lang, text, "source_desc")
 
@@ -111,6 +138,7 @@ class KnowledgeBaseBuilder:
             db.insert_many("nutrition_facts", NUTRITION_FACTS_COLUMNS, fact_rows)
             db.insert_many("class_map", CLASS_MAP_COLUMNS, class_rows)
             db.set_meta("schema_version", SCHEMA_VERSION)
+            db.set_meta("db_version", DB_VERSION)
             db.set_meta("active_model_version", self.config.model_version)
             db.set_meta("embedding_model", self.config.embedding_model)
             db.set_meta("built_at", datetime.now(timezone.utc).isoformat())
@@ -122,6 +150,8 @@ class KnowledgeBaseBuilder:
             "Built: %d foods, %d aliases, %d facts, %d class maps",
             len(food_rows), len(alias_rows), len(fact_rows), len(class_rows),
         )
+        if deploy:
+            deploy_database(self.config)
         return len(food_rows)
 
     # --- helpers ------------------------------------------------------------
