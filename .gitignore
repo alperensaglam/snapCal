@@ -14,9 +14,13 @@ ios/*.xcodeproj
 ios/**/*.xcworkspace
 .swiftpm/
 DerivedData/
-# CoreML package is a generated build artifact (run scripts/export_coreml.py)
+# CoreML packages are generated build artifacts (run the matching export scripts)
 ios/Lokma/Resources/FoodSeg.mlpackage/
 ios/Lokma/Resources/FoodSeg.metadata.json
+ios/Lokma/Resources/FillHead.mlpackage/
+ios/Lokma/Resources/FillHead.metadata.json
+ios/Lokma/Resources/HeightHead.mlpackage/
+ios/Lokma/Resources/HeightHead.metadata.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

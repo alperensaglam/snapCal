@@ -13,6 +13,7 @@ import logging
 import random
 import shutil
 from pathlib import Path
+from typing import Callable
 
 from lokma.config import AppConfig
 from lokma.knowledge.taxonomy import GOLDEN_LIST
@@ -20,6 +21,39 @@ from lokma.knowledge.taxonomy import GOLDEN_LIST
 logger = logging.getLogger(__name__)
 
 IMAGE_GLOBS = ("*.jpg", "*.jpeg", "*.png")
+
+#: A raw dataset label -> canonical taxonomy slug (or None to skip). Supplied by
+#: the data-pipeline Vocabulary Alignment Bridge; see :mod:`lokma.data_pipeline`.
+LabelResolver = Callable[[str], "str | None"]
+
+
+def resolve_seg_dirs(
+    raw_dir: Path | str, label_resolver: LabelResolver | None = None
+) -> list[tuple[int, str, Path]]:
+    """Plan the ``(class_id, slug, image_dir)`` tuples to ingest.
+
+    Default (``label_resolver=None``) reproduces the ordinal ``GOLDEN_LIST``
+    behavior exactly: one entry per slug, reading ``raw_dir/<slug>/``. With a
+    resolver, every *subdirectory name* is treated as an external dataset label,
+    remapped to a canonical slug (unmapped -> skipped, no contamination) and
+    assigned its ``GOLDEN_LIST`` ``class_id`` so the trained class order stays
+    stable across heterogeneous sources.
+    """
+    raw_dir = Path(raw_dir)
+    if label_resolver is None:
+        return [(class_id, slug, raw_dir / slug) for class_id, slug in enumerate(GOLDEN_LIST)]
+    plan: list[tuple[int, str, Path]] = []
+    if not raw_dir.exists():
+        return plan
+    for child in sorted(p for p in raw_dir.iterdir() if p.is_dir()):
+        slug = label_resolver(child.name)
+        if slug is None:
+            continue  # unmapped label — skipped by the bridge's report
+        if slug not in GOLDEN_LIST:
+            logger.warning("dir %r resolved to %r, not in GOLDEN_LIST — skipping", child.name, slug)
+            continue
+        plan.append((GOLDEN_LIST.index(slug), slug, child))
+    return plan
 
 
 def write_data_yaml(out_dir: Path | str, classes: tuple[str, ...]) -> Path:
@@ -50,10 +84,18 @@ def auto_label(img_path: Path, model, class_id: int, conf: float = 0.25) -> list
     return lines
 
 
-def build_v2_dataset(config: AppConfig | None = None, train_ratio: float = 0.8, conf: float = 0.25) -> dict[str, int]:
+def build_v2_dataset(
+    config: AppConfig | None = None,
+    train_ratio: float = 0.8,
+    conf: float = 0.25,
+    label_resolver: LabelResolver | None = None,
+) -> dict[str, int]:
     """Build the v2 dataset from ``config.raw_v2_dir`` -> ``config.yolo_v2_dataset_dir``.
 
     Returns a per-slug image count (0 where the user has not supplied images yet).
+    ``label_resolver`` (from the data-pipeline Vocabulary Alignment Bridge) remaps
+    external label directories to canonical slugs; the default (``None``) preserves
+    the ordinal ``GOLDEN_LIST`` behavior byte-for-byte.
     """
     config = config or AppConfig()
     from ultralytics import YOLO  # lazy — heavy
@@ -67,8 +109,7 @@ def build_v2_dataset(config: AppConfig | None = None, train_ratio: float = 0.8, 
     model = YOLO(str(config.pretrained_seg_model))
     counts: dict[str, int] = {}
 
-    for class_id, slug in enumerate(GOLDEN_LIST):
-        class_dir = raw / slug
+    for class_id, slug, class_dir in resolve_seg_dirs(raw, label_resolver):
         images: list[Path] = []
         if class_dir.exists():
             for pattern in IMAGE_GLOBS:
